@@ -23,7 +23,7 @@ import os, json
 import numpy as np
 
 from python.helpers.print_style import PrintStyle
-from python.helpers import files
+from python.helpers import files, plugins
 from langchain_core.documents import Document
 from . import knowledge_import
 from python.helpers.log import Log, LogItem
@@ -530,7 +530,7 @@ def get_context_memory_subdir(context: AgentContext) -> str:
         return memory_subdir
 
     # no project, regular memory subdir
-    return context.config.memory_subdir or "default"
+    return plugins.get_plugin_config("memory").get("agent_memory_subdir", "default")
 
 
 def get_existing_memory_subdirs() -> list[str]:

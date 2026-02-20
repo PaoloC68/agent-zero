@@ -1,5 +1,5 @@
 import asyncio
-from python.helpers import settings, errors
+from python.helpers import errors, plugins
 from python.helpers.extension import Extension
 from python.helpers.dirty_json import DirtyJson
 from agent import LoopData
@@ -16,7 +16,7 @@ class MemorizeMemories(Extension):
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
         # try:
 
-        set = settings.get_settings()
+        set = plugins.get_plugin_config("memory")
 
         if not set["memory_memorize_enabled"]:
             return
@@ -36,7 +36,7 @@ class MemorizeMemories(Extension):
     async def memorize(self, loop_data: LoopData, log_item: LogItem, **kwargs):
 
         try:
-            set = settings.get_settings()
+            set = plugins.get_plugin_config("memory")
 
             db = await Memory.get(self.agent)
 

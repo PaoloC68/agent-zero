@@ -46,7 +46,7 @@
                 this.loading = false;
             }
         },
-        async openSettings(plugin) {
+        async openPluginConfig(plugin) {
             if (!plugin?.name) return;
             await Alpine.store('pluginSettings')?.open(plugin.name);
             window.openModal?.('components/plugins/plugin-settings.html');
@@ -54,73 +54,137 @@
     }" x-init="init()">
 
         <template x-if="loading || plugins.length > 0">
-            <div class="plugin-subsection-wrapper">
+            <div>
                 <div class="section-title">Plugins</div>
                 <div class="section-description">
                     Plugin-specific settings for this tab.
                 </div>
 
-                <div x-show="loading" class="plugin-subsection-loading">
-                    <span>Loading...</span>
+                <div x-show="loading" class="loading">
+                    <span>Loading plugins...</span>
                 </div>
 
-                <template x-for="plugin in plugins" :key="plugin.path || plugin.name">
-                    <div class="plugin-subsection-row">
-                        <div class="plugin-subsection-info">
-                            <span class="plugin-subsection-name" x-text="plugin.display_name || plugin.name"></span>
-                            <span class="plugin-subsection-desc" x-text="plugin.description"></span>
+                <div class="plugins-list">
+                    <template x-for="plugin in plugins" :key="plugin.path || plugin.name">
+                        <div class="plugin-card">
+                            <div class="plugin-header">
+                                <div class="plugin-heading">
+                                    <div class="plugin-title" x-text="plugin.display_name || plugin.name || '(unnamed plugin)'"></div>
+                                    <code class="plugin-path" x-text="plugin.path"></code>
+                                </div>
+                                <div class="plugin-actions">
+                                    <button type="button"
+                                        class="button"
+                                        title="Config"
+                                        @click="openPluginConfig(plugin)">
+                                        <span class="icon material-symbols-outlined">settings</span> Config
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="plugin-description" x-text="plugin.description || 'No description provided.'"></div>
                         </div>
-                        <button class="button" @click="openSettings(plugin)">
-                            <span class="icon material-symbols-outlined">settings</span>
-                            Settings
-                        </button>
-                    </div>
-                </template>
+                    </template>
+                </div>
             </div>
         </template>
     </div>
 
     <style>
-        .plugin-subsection-wrapper {
-            margin-top: 0.5rem;
+        /* Reused styles from plugin-list.html for uniformity */
+        .plugins-list {
+            margin-top: 0.25rem;
         }
 
-        .plugin-subsection-loading {
-            color: var(--color-text-secondary);
-            font-size: var(--font-size-small);
-            margin-top: 0.5rem;
-        }
-
-        .plugin-subsection-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            padding: 0.6rem 0.75rem;
+        .plugin-card {
             border: 1px solid var(--color-border);
             border-radius: 4px;
-            margin-top: 0.5rem;
+            padding: 0.75rem;
+            margin-top: 0.75rem;
             background: var(--color-bg-primary);
         }
 
-        .plugin-subsection-info {
+        .plugin-header {
             display: flex;
-            flex-direction: column;
-            gap: 0.2rem;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: nowrap;
             min-width: 0;
         }
 
-        .plugin-subsection-name {
-            font-weight: 600;
-            font-size: var(--font-size-normal);
+        .plugin-heading {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            flex: 1 1 auto;
         }
 
-        .plugin-subsection-desc {
-            font-size: var(--font-size-small);
+        .plugin-title {
+            font-weight: 600;
+            font-size: 1rem;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .plugin-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding-bottom: var(--spacing-sm);
+            flex-wrap: nowrap;
+            min-width: 0;
+            flex: 0 0 auto;
+            max-width: 100%;
+            justify-content: flex-end;
+        }
+
+        .plugin-description {
+            margin-top: 0.35rem;
             color: var(--color-text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: var(--font-size-small);
+        }
+
+        .plugin-path {
+            margin-top: 0.35rem;
+            font-size: 0.85rem;
+            color: var(--color-text-muted);
+            min-width: 0;
+            max-width: 100%;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+        }
+
+        .loading {
+            width: 100%;
+            text-align: center;
+            margin-top: 0.75rem;
+            margin-bottom: 0.75rem;
+            color: var(--color-secondary);
+        }
+
+        @media (max-width: 640px) {
+            .plugin-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .plugin-heading {
+                width: 100%;
+                flex: 0 0 auto;
+            }
+
+            .plugin-actions {
+                width: 100%;
+                justify-content: flex-start;
+                padding-bottom: 0;
+                flex-wrap: wrap;
+            }
+
+            .plugin-path {
+                white-space: normal;
+                word-break: break-word;
+            }
         }
     </style>
 </body>
