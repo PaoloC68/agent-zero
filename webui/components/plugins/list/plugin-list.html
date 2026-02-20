@@ -9,7 +9,7 @@
 <body>
     <div x-data>
         <template x-if="$store.pluginListStore">
-            <div x-init="$store.pluginListStore.setTab && $store.pluginListStore.setTab('custom')">
+            <div x-init="$store.pluginListStore.init && $store.pluginListStore.init()">
 
                 <ul class="nav nav-tabs" id="plugin-list-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
@@ -68,7 +68,7 @@
                                             class="button"
                                             title="Open"
                                             @click="$store.pluginListStore.openPlugin(plugin)">
-                                            <span class="icon material-symbols-outlined">folder_open</span> Open
+                                            <span class="icon material-symbols-outlined">dashboard</span> Open
                                         </button>
                                     </template>
                                     <template x-if="plugin.has_config_screen">
@@ -85,13 +85,14 @@
                                         @click="$store.pluginListStore.openPluginInfo(plugin)">
                                         <span class="icon material-symbols-outlined">info</span> Info
                                     </button>
-                                    <button type="button"
-                                        class="button cancel icon-button"
-                                        :title="plugin.is_custom ? 'Delete' : 'Builtin plugins cannot be deleted'"
-                                        :disabled="!plugin.is_custom"
-                                        @click="$confirmClick($event, () => $store.pluginListStore.deletePlugin(plugin))">
-                                        <span class="icon material-symbols-outlined">delete</span>
-                                    </button>
+                                    <template x-if="plugin.is_custom">
+                                        <button type="button"
+                                            class="button cancel icon-button"
+                                            title="Delete"
+                                            @click="$confirmClick($event, () => $store.pluginListStore.deletePlugin(plugin))">
+                                            <span class="icon material-symbols-outlined">delete</span>
+                                        </button>
+                                    </template>
                                 </div>
                             </div>
                             <div class="plugin-description" x-text="plugin.description || 'No description provided.'"></div>
@@ -189,6 +190,15 @@
             flex: 0 0 auto;
             max-width: 100%;
             justify-content: flex-end;
+        }
+
+        .plugin-actions .button {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.9rem;
+        }
+
+        .plugin-actions .button .icon {
+            font-size: 1.1rem;
         }
 
         .plugin-description {
