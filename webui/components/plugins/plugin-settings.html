@@ -23,7 +23,7 @@
                         <label class="plugin-settings-toolbar-item">
                             <span class="plugin-settings-toolbar-label">Project</span>
                             <select x-model="$store.pluginSettings.projectName"
-                                    @change="$store.pluginSettings.loadSettings()">
+                                    @change="$store.pluginSettings.onScopeChanged()">
                                 <option value="">Global</option>
                                 <template x-for="project in $store.pluginSettings.projects" :key="project.key">
                                     <option :value="project.key" x-text="project.label"></option>
@@ -34,7 +34,7 @@
                         <label class="plugin-settings-toolbar-item">
                             <span class="plugin-settings-toolbar-label">Agent profile</span>
                             <select x-model="$store.pluginSettings.agentProfileKey"
-                                    @change="$store.pluginSettings.loadSettings()">
+                                    @change="$store.pluginSettings.onScopeChanged()">
                                 <option value="">All profiles</option>
                                 <template x-for="profile in $store.pluginSettings.agentProfiles" :key="profile.key">
                                     <option :value="profile.key" x-text="profile.label"></option>
@@ -42,7 +42,7 @@
                             </select>
                         </label>
 
-                        <button type="button" class="button plugin-settings-toolbar-button" @click="$store.pluginSettings.openConfigListModal()">
+                        <button type="button" class="button plugin-settings-toolbar-button" title="Show existing configurations" @click="$store.pluginSettings.openConfigListModal()">
                             <span class="icon material-symbols-outlined">list</span>
                         </button>
 
@@ -98,7 +98,7 @@
         .plugin-settings-toolbar-row {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: clamp(0.75rem, 2vw, 2rem);
             flex-wrap: wrap;
         }
 
@@ -106,7 +106,7 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            flex: 0 1 18rem;
+            flex: 1 1 0;
             min-width: 12rem;
             margin: 0;
         }

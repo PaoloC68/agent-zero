@@ -275,12 +275,31 @@ def find_plugin_assets(
             if "*" in path
             else ([path] if files.exists(path) else [])
         )
+
+        need_proj = proj == "*"
+        need_prof = profile == "*"
+
+        def _after(s: str, marker: str, last: bool = False) -> str:
+            i = s.rfind(marker) if last else s.find(marker)
+            if i == -1:
+                return ""
+            start = i + len(marker)
+            end = s.find("/", start)
+            return s[start:] if end == -1 else s[start:end]
+
         for matched in matched_paths:
+            inferred_proj = _after(matched, "/projects/") if need_proj else proj
+            inferred_prof = _after(matched, "/agents/", last=True) if need_prof else profile
             results.append(
-                {"project_name": proj, "agent_profile": profile, "path": matched}
+                {
+                    "project_name": inferred_proj,
+                    "agent_profile": inferred_prof,
+                    "path": matched,
+                }
             )
             if only_first:
                 return True
+        return False
 
     # project/.a0proj/agents/<profile>/plugins/<plugin_name>/...
     if project_name:
@@ -295,7 +314,7 @@ def find_plugin_assets(
             )
             if _collect(path, project_name, agent_profile):
                 return results
-        else:
+        if not agent_profile or agent_profile == "*":
             # project/.a0proj/plugins/<plugin_name>/...
             path = projects.get_project_meta(
                 project_name, files.PLUGINS_DIR, plugin_name, *subpaths

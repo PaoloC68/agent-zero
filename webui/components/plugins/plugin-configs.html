@@ -1,6 +1,6 @@
 <html>
 <head>
-    <title>Plugin Configurations</title>
+    <title>Existing plugin configurations</title>
     <script type="module">
         import { store } from "/components/plugins/plugin-settings-store.js";
     </script>
@@ -8,7 +8,7 @@
 <body>
     <div x-data>
         <template x-if="$store.pluginSettings">
-            <div x-create="$store.pluginSettings.loadConfigList()">
+            <div x-create="$store.pluginSettings.loadConfigList()" class="plugin-configs-container">
 
                 <div x-show="$store.pluginSettings.configsError" class="plugin-configs-error">
                     <span class="material-symbols-outlined">error</span>
@@ -28,18 +28,26 @@
                     <template x-for="cfg in ($store.pluginSettings.configs || [])" :key="(cfg.project_name || '') + '|' + (cfg.agent_profile || '')">
                         <div class="plugin-configs-row">
                             <div class="plugin-configs-scope">
-                                <div class="plugin-configs-scope-title" x-text="$store.pluginSettings.projectLabel(cfg.project_name || '')"></div>
-                                <div class="plugin-configs-scope-sub" x-text="$store.pluginSettings.agentProfileLabel(cfg.agent_profile || '')"></div>
+                                <div class="plugin-configs-scope-top">
+                                    <div class="plugin-configs-scope-line">
+                                        <span class="plugin-configs-scope-key">Project:</span>
+                                        <span x-text="$store.pluginSettings.projectLabel(cfg.project_name || '')"></span>
+                                    </div>
+                                    <div class="plugin-configs-scope-line">
+                                        <span class="plugin-configs-scope-key">Agent profile:</span>
+                                        <span x-text="$store.pluginSettings.agentProfileLabel(cfg.agent_profile || '')"></span>
+                                    </div>
+                                </div>
+                                <div class="plugin-configs-scope-sub" x-text="cfg.path || ''"></div>
                             </div>
 
                             <div class="plugin-configs-actions">
                                 <button type="button" class="button" @click="$store.pluginSettings.switchToConfig(cfg.project_name || '', cfg.agent_profile || '')">
                                     <span class="icon material-symbols-outlined">list</span>
-                                    Switch
+                                    Show
                                 </button>
-                                <button type="button" class="button cancel" @click="$store.pluginSettings.deleteConfig(cfg.project_name || '', cfg.agent_profile || '')">
+                                <button type="button" class="button cancel icon-button" title="Delete" @click="$confirmClick($event, () => $store.pluginSettings.deleteConfig(cfg.project_name || '', cfg.agent_profile || ''))">
                                     <span class="icon material-symbols-outlined">delete</span>
-                                    Delete
                                 </button>
                             </div>
                         </div>
@@ -59,6 +67,10 @@
             padding: 0.5rem 0.75rem;
             margin-bottom: 0.75rem;
             font-size: var(--font-size-small);
+        }
+
+        .plugin-configs-container {
+            padding: 0.75rem;
         }
 
         .plugin-configs-error {
@@ -85,21 +97,45 @@
             background: var(--color-surface);
         }
 
-        .plugin-configs-scope-title {
+        .plugin-configs-scope {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .plugin-configs-scope-top {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: baseline;
+        }
+
+        .plugin-configs-scope-line {
+            display: flex;
+            gap: 0.35rem;
+            align-items: baseline;
+        }
+
+        .plugin-configs-scope-key {
             font-weight: 600;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
         }
 
         .plugin-configs-scope-sub {
             font-size: var(--font-size-small);
             color: var(--color-text-secondary);
             margin-top: 0.2rem;
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: normal;
         }
 
         .plugin-configs-actions {
             display: flex;
             gap: 0.5rem;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             justify-content: flex-end;
+            flex: 0 0 auto;
         }
 
         .plugin-configs-empty {

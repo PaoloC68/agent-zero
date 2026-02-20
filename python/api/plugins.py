@@ -1,3 +1,5 @@
+import os
+
 from python.helpers.api import ApiHandler, Request, Response
 from python.helpers import plugins, files
 
@@ -48,6 +50,50 @@ class Plugins(ApiHandler):
                 "loaded_agent_profile": loaded_agent_profile,
                 "data": settings,
             }
+
+        if action == "list_configs":
+            plugin_name = input.get("plugin_name", "")
+            if not plugin_name:
+                return Response(status=400, response="Missing plugin_name")
+
+            configs = plugins.find_plugin_assets(
+                plugins.CONFIG_FILE_NAME,
+                plugin_name=plugin_name,
+                project_name="*",
+                agent_profile="*",
+                only_first=False,
+            )
+
+            return {"ok": True, "data": configs}
+
+        if action == "delete_config":
+            plugin_name = input.get("plugin_name", "")
+            path = input.get("path", "")
+            if not plugin_name:
+                return Response(status=400, response="Missing plugin_name")
+            if not path:
+                return Response(status=400, response="Missing path")
+
+            configs = plugins.find_plugin_assets(
+                plugins.CONFIG_FILE_NAME,
+                plugin_name=plugin_name,
+                project_name="*",
+                agent_profile="*",
+                only_first=False,
+            )
+            allowed_paths = {c.get("path", "") for c in configs}
+            if path not in allowed_paths:
+                return Response(status=400, response="Invalid path")
+
+            if not files.exists(path):
+                return {"ok": True}
+
+            try:
+                os.remove(path)
+            except Exception as e:
+                return Response(status=500, response=f"Failed to delete config: {str(e)}")
+
+            return {"ok": True}
 
         if action == "save_config":
             plugin_name = input.get("plugin_name", "")

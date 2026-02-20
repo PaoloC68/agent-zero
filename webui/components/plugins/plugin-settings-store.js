@@ -16,6 +16,44 @@ const model = {
     // plugin settings data (plugins bind their fields here)
     settings: {},
 
+    settingsSnapshotJson: "",
+    previousProjectName: "",
+    previousAgentProfileKey: "",
+
+    _toComparableJson(value) {
+        try {
+            return JSON.stringify(value ?? {});
+        } catch {
+            return "";
+        }
+    },
+
+    get hasUnsavedChanges() {
+        return this._toComparableJson(this.settings) !== (this.settingsSnapshotJson || "");
+    },
+
+    confirmDiscardUnsavedChanges() {
+        if (!this.hasUnsavedChanges) return true;
+        return window.confirm("You have unsaved changes that will be lost. Continue?");
+    },
+
+    async onScopeChanged() {
+        const nextProject = this.projectName || "";
+        const nextProfile = this.agentProfileKey || "";
+        const prevProject = this.previousProjectName || "";
+        const prevProfile = this.previousAgentProfileKey || "";
+
+        if (nextProject === prevProject && nextProfile === prevProfile) return;
+
+        if (!this.confirmDiscardUnsavedChanges()) {
+            this.projectName = prevProject;
+            this.agentProfileKey = prevProfile;
+            return;
+        }
+
+        await this.loadSettings();
+    },
+
     // where the settings were actually loaded from
     loadedPath: "",
     loadedProjectName: "",
@@ -58,8 +96,17 @@ const model = {
         this.isListingConfigs = true;
         this.configsError = null;
         try {
-            // TODO: list existing plugin config scopes without API calls
-            this.configs = [];
+            const response = await fetchApi("/plugins", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "list_configs",
+                    plugin_name: this.pluginName,
+                }),
+            });
+            const result = await response.json().catch(() => ({}));
+            this.configs = result.ok ? (result.data || []) : [];
+            if (!result.ok) this.configsError = result.error || "Failed to load configurations";
         } catch (e) {
             this.configsError = e?.message || "Failed to load configurations";
             this.configs = [];
@@ -69,6 +116,7 @@ const model = {
     },
 
     async switchToConfig(projectName, agentProfile) {
+        if (!this.confirmDiscardUnsavedChanges()) return;
         this.projectName = projectName || "";
         this.agentProfileKey = agentProfile || "";
         await this.loadSettings();
@@ -78,8 +126,32 @@ const model = {
     async deleteConfig(projectName, agentProfile) {
         if (!this.pluginName) return;
         try {
-            // TODO: delete existing plugin config scope without API calls
-            this.configsError = "Delete is not implemented yet";
+            const cfg = (this.configs || []).find(
+                (c) => (c?.project_name || "") === (projectName || "") && (c?.agent_profile || "") === (agentProfile || "")
+            );
+            const path = cfg?.path || "";
+            if (!path) {
+                this.configsError = "Configuration path not found";
+                return;
+            }
+
+            const response = await fetchApi("/plugins", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "delete_config",
+                    plugin_name: this.pluginName,
+                    path,
+                }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!result.ok) {
+                this.configsError = result.error || "Delete failed";
+                return;
+            }
+
+            this.configsError = null;
+            await this.loadConfigList();
         } catch (e) {
             this.configsError = e?.message || "Delete failed";
         }
@@ -98,10 +170,13 @@ const model = {
         this.pluginName = pluginName;
         this.pluginMeta = null;
         this.settings = {};
+        this.settingsSnapshotJson = "";
         this.error = null;
         this.saveMode = 'plugin';
         this.projectName = "";
         this.agentProfileKey = "";
+        this.previousProjectName = "";
+        this.previousAgentProfileKey = "";
         this.loadedPath = "";
         this.loadedProjectName = "";
         this.loadedAgentProfile = "";
@@ -167,6 +242,9 @@ const model = {
             this.error = e?.message || "Failed to load settings";
             this.settings = {};
         } finally {
+            this.settingsSnapshotJson = this._toComparableJson(this.settings);
+            this.previousProjectName = this.projectName || "";
+            this.previousAgentProfileKey = this.agentProfileKey || "";
             this.isLoading = false;
         }
     },
@@ -201,7 +279,10 @@ const model = {
             });
             const result = await response.json().catch(() => ({}));
             if (!result.ok) this.error = result.error || "Save failed";
-            else window.closeModal?.();
+            else {
+                this.settingsSnapshotJson = this._toComparableJson(this.settings);
+                window.closeModal?.();
+            }
         } catch (e) {
             this.error = e?.message || "Save failed";
         } finally {
@@ -213,6 +294,9 @@ const model = {
         this.pluginName = null;
         this.pluginMeta = null;
         this.settings = {};
+        this.settingsSnapshotJson = "";
+        this.previousProjectName = "";
+        this.previousAgentProfileKey = "";
         this.loadedPath = "";
         this.loadedProjectName = "";
         this.loadedAgentProfile = "";
