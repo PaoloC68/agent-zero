@@ -217,7 +217,7 @@ def get_webui_extensions(extension_point: str, filters: List[str] | None = None)
     return entries
 
 
-def get_plugin_config(plugin_name: str, agent: Agent | None, project_name:str|None=None, agent_profile:str|None=None):
+def get_plugin_config(plugin_name: str, agent: Agent | None=None, project_name:str|None=None, agent_profile:str|None=None):
     
     if project_name is None and agent is not None:
         from python.helpers import projects
@@ -226,7 +226,7 @@ def get_plugin_config(plugin_name: str, agent: Agent | None, project_name:str|No
         agent_profile = agent.config.profile
     
     # find config.json in all possible places
-    file_path = find_plugin_asset(plugin_name, CONFIG_FILE_NAME, project_name=project_name, agent_profile=agent_profile)
+    file_path = find_plugin_asset(plugin_name, CONFIG_FILE_NAME, project_name=project_name or "", agent_profile=agent_profile or "")
     # use default config if not found
     if not file_path:
         file_path = files.get_abs_path(
