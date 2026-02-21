@@ -74,6 +74,23 @@ def get_version():
         return "unknown"
 
 
+def is_official_agent_zero_repo() -> bool:
+    """Return True when origin points to agent0ai/agent-zero."""
+    try:
+        repo = Repo(files.get_base_dir())
+        if not repo.remotes:
+            return False
+
+        remote_url = strip_auth_from_url(repo.remotes.origin.url).lower().rstrip("/")
+
+        if remote_url.endswith(".git"):
+            remote_url = remote_url[:-4]
+
+        return remote_url.endswith("github.com/agent0ai/agent-zero") or remote_url.endswith("github.com:agent0ai/agent-zero")
+    except Exception:
+        return False
+
+
 def clone_repo(url: str, dest: str, token: str | None = None):
     """Clone a git repository. Uses http.extraHeader for token auth (never stored in URL/config)."""
     cmd = ['git']
