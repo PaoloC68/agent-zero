@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-zero-cisco-guard"
+version = "0.1.0"
+description = "Cisco AI Skill Scanner integration for Agent Zero guard system"
+requires-python = ">=3.10"
+
+[project.entry-points."agent_zero.guards"]
+cisco_scanner = "agent_zero_cisco_guard.handlers:skill_install_handler"
