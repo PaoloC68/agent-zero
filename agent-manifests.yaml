@@ -1,0 +1,332 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-zero
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-zero-data-pvc
+  namespace: agent-zero
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: compute-csi-default-sc
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Secret "agents-secrets" is created by add_secrets.bash from Nebius MysteryBox.
+# It must exist BEFORE applying this manifest.
+# Contains: API keys (ANTHROPIC, OPENAI, GEMINI, NEBIUS, DEEPINFRA, OPENROUTER,
+# PERPLEXITY, TAVILY, BRAVE, VIRUSTOTAL, LANGSMITH, CONTEXT7, SKILL_SCANNER_LLM_*),
+# AUTH_LOGIN, AUTH_PASSWORD, GHCR_PAT, GITHUB_PAT, API_KEY_GOOGLE,
+# TELEGRAM_BOT_TOKEN, SKILL_SCANNER_LLM_MODEL.
+# Run: ./add_secrets.bash
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-zero-providers
+  namespace: agent-zero
+data:
+  model_providers.yaml: |
+    chat:
+      a0_venice:
+        name: Agent Zero API
+        litellm_provider: openai
+        kwargs:
+          api_base: https://llm.agent-zero.ai/v1
+          venice_parameters:
+            include_venice_system_prompt: false
+      anthropic:
+        name: Anthropic
+        litellm_provider: anthropic
+      cometapi:
+        name: CometAPI
+        litellm_provider: cometapi
+      deepinfra:
+        name: DeepInfra
+        litellm_provider: deepinfra
+      deepseek:
+        name: DeepSeek
+        litellm_provider: deepseek
+      github_copilot:
+        name: GitHub Copilot
+        litellm_provider: github_copilot
+        kwargs:
+          extra_headers:
+            "Editor-Version": "vscode/1.85.1"
+            "Copilot-Integration-Id": "vscode-chat"
+            "Copilot-Vision-Request": "true"
+      google:
+        name: Google
+        litellm_provider: gemini
+      groq:
+        name: Groq
+        litellm_provider: groq
+      huggingface:
+        name: HuggingFace
+        litellm_provider: huggingface
+      lm_studio:
+        name: LM Studio
+        litellm_provider: lm_studio
+      mistral:
+        name: Mistral AI
+        litellm_provider: mistral
+      moonshot:
+        name: Moonshot AI
+        litellm_provider: moonshot
+      ollama:
+        name: Ollama
+        litellm_provider: ollama
+      openai:
+        name: OpenAI
+        litellm_provider: openai
+      azure:
+        name: OpenAI Azure
+        litellm_provider: azure
+      bedrock:
+        name: AWS Bedrock
+        litellm_provider: bedrock
+      openrouter:
+        name: OpenRouter
+        litellm_provider: openrouter
+        kwargs:
+          extra_headers:
+            "HTTP-Referer": "https://agent-zero.ai/"
+            "X-Title": "Agent Zero"
+      sambanova:
+        name: Sambanova
+        litellm_provider: sambanova
+      venice:
+        name: Venice.ai
+        litellm_provider: openai
+        kwargs:
+          api_base: https://api.venice.ai/api/v1
+          venice_parameters:
+            include_venice_system_prompt: false
+      xai:
+        name: xAI
+        litellm_provider: xai
+      zai:
+        name: Z.AI
+        litellm_provider: openai
+        kwargs:
+          api_base: https://api.z.ai/api/paas/v4
+      zai_coding:
+        name: Z.AI Coding
+        litellm_provider: openai
+        kwargs:
+          api_base: https://api.z.ai/api/coding/paas/v4
+      other:
+        name: Other OpenAI compatible
+        litellm_provider: openai
+    embedding:
+      deepinfra:
+        name: DeepInfra
+        litellm_provider: openai
+        kwargs:
+          api_base: https://api.deepinfra.com/v1/openai
+      huggingface:
+        name: HuggingFace
+        litellm_provider: huggingface
+      google:
+        name: Google
+        litellm_provider: gemini
+      lm_studio:
+        name: LM Studio
+        litellm_provider: lm_studio
+      mistral:
+        name: Mistral AI
+        litellm_provider: mistral
+      ollama:
+        name: Ollama
+        litellm_provider: ollama
+      openai:
+        name: OpenAI
+        litellm_provider: openai
+      azure:
+        name: OpenAI Azure
+        litellm_provider: azure
+      bedrock:
+        name: AWS Bedrock
+        litellm_provider: bedrock
+      openrouter:
+        name: OpenRouter
+        litellm_provider: openai
+        kwargs:
+          api_base: https://openrouter.ai/api/v1
+          extra_headers:
+            "HTTP-Referer": "https://agent-zero.ai/"
+            "X-Title": "Agent Zero"
+      other:
+        name: Other OpenAI compatible
+        litellm_provider: openai
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-zero
+  namespace: agent-zero
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-zero
+  template:
+    metadata:
+      labels:
+        app: agent-zero
+    spec:
+      terminationGracePeriodSeconds: 120
+      volumes:
+        - name: agent-zero-data
+          persistentVolumeClaim:
+            claimName: agent-zero-data-pvc
+        - name: provider-config
+          configMap:
+            name: agent-zero-providers
+      initContainers:
+        - name: git-bootstrap
+          image: alpine/git:2.45.2
+          env:
+            - name: GIT_REPO
+              value: "https://github.com/PaoloC68/agent-zero-gitops.git"
+            - name: GIT_BRANCH
+              value: "main"
+            - name: GITHUB_PAT
+              valueFrom:
+                secretKeyRef:
+                  name: agents-secrets
+                  key: GITHUB_PAT
+          volumeMounts:
+            - name: agent-zero-data
+              mountPath: /a0/usr
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              cd /a0/usr
+
+              # Configure git auth using PAT (HTTPS)
+              if [ -n "$GITHUB_PAT" ]; then
+                git config --global credential.helper store
+                printf "https://%s:x-oauth-basic@github.com\n" "$GITHUB_PAT" > /root/.git-credentials
+              fi
+
+              if [ ! -d ".git" ]; then
+                echo "No .git directory found, cloning repo..."
+                rm -rf ./*
+                git clone --branch "$GIT_BRANCH" "$GIT_REPO" .
+              else
+                echo ".git directory exists, pulling latest..."
+                if ! git pull --ff-only; then
+                  echo "WARNING: git pull failed — resetting to origin/$GIT_BRANCH"
+                  git fetch origin
+                  git reset --hard "origin/$GIT_BRANCH"
+                fi
+              fi
+      containers:
+        - name: agent-zero
+          image: ghcr.io/paoloc68/agent-zero-guard:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          envFrom:
+            - secretRef:
+                name: agents-secrets
+          env:
+            - name: A0_BASE_URL
+              value: "https://helpa0.com"
+          volumeMounts:
+            - name: agent-zero-data
+              mountPath: /a0/usr
+            - name: provider-config
+              mountPath: /a0/conf/model_providers.yaml
+              subPath: model_providers.yaml
+              readOnly: true
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "1Gi"
+            limits:
+              cpu: "1500m"
+              memory: "4Gi"
+          # NOTE: /api/health exists on development branch but not on main.
+          # /login always returns 200 regardless of auth config.
+          startupProbe:
+            httpGet:
+              path: /login
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: 15
+            failureThreshold: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-zero
+  namespace: agent-zero
+spec:
+  selector:
+    app: agent-zero
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agent-zero
+  namespace: agent-zero
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # TLS via cert-manager (auto-provisions agent-zero-tls secret)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # WebSocket support (required for Socket.IO real-time UI)
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # Timeouts — LLM streaming + WebSocket keep-alive (Socket.IO ping: 25s)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    # Body size — Agent Zero allows up to 5GB uploads, set practical limit
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Sticky sessions for WebSocket (needed if scaling beyond 1 replica)
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+    # Optional: restrict to internal ranges
+    # nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8,192.168.0.0/16"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - helpa0.com
+      secretName: agent-zero-tls
+  rules:
+    - host: helpa0.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: agent-zero
+                port:
+                  number: 80
