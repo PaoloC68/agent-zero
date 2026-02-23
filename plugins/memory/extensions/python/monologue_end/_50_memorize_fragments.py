@@ -1,5 +1,5 @@
 import asyncio
-from python.helpers import errors, plugins
+from python.helpers import errors, plugins, tokens
 from python.helpers.extension import Extension
 from python.helpers.dirty_json import DirtyJson
 from agent import LoopData
@@ -47,6 +47,10 @@ class MemorizeMemories(Extension):
             # get system message and chat history for util llm
             system = self.agent.read_prompt("memory.memories_sum.sys.md")
             msgs_text = self.agent.concat_messages(self.agent.history)
+
+            # trim history to fit within utility model context window
+            ctx_limit = int(self.agent.config.utility_model.ctx_length * 0.7)
+            msgs_text = tokens.trim_to_tokens(msgs_text, ctx_limit, "end")
 
             # # log query streamed by LLM
             # async def log_callback(content):
