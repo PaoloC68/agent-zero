@@ -1,31 +1,45 @@
 # Use the pre-built base image for A0
-# FROM agent-zero-base:local
 FROM agent0ai/agent-zero-base:latest
 
 # Set BRANCH to "local" if not provided
 ARG BRANCH=local
 ENV BRANCH=$BRANCH
 
-# Copy filesystem files to root
+# --- Layer 1: Install scripts (rarely change) ---
 COPY ./docker/run/fs/ /
-# Copy current development files to git, they will only be used in "local" branch
-COPY ./ /git/agent-zero
 
-# pre installation steps
+# --- Layer 2: Pre-install (apt update, SSH setup) ---
 RUN bash /ins/pre_install.sh $BRANCH
 
-# install A0
-RUN bash /ins/install_A0.sh $BRANCH
+# --- Layer 3: Requirements only (cached unless deps change) ---
+COPY requirements.txt requirements2.txt /git/agent-zero/
 
-# install additional software
-RUN bash /ins/install_additional.sh $BRANCH
+# --- Layer 4: pip install (HEAVY — cached when requirements unchanged) ---
+RUN bash -c "source /opt/venv-a0/bin/activate && \
+    uv pip install -r /git/agent-zero/requirements.txt && \
+    uv pip install -r /git/agent-zero/requirements2.txt"
 
-# cleanup repo and install A0 without caching, this speeds up builds
-ARG CACHE_DATE=none
-RUN echo "cache buster $CACHE_DATE" && bash /ins/install_A02.sh $BRANCH
+# --- Layer 5: Playwright (cached alongside pip layer) ---
+RUN bash /ins/install_playwright.sh $BRANCH
 
-# post installation steps
-RUN bash /ins/post_install.sh $BRANCH
+# --- Layer 6: Cisco Guard plugin + Skill Scanner ---
+RUN bash -c "source /opt/venv-a0/bin/activate && \
+    pip install git+https://github.com/PaoloC68/agent-zero-cisco-guard.git && \
+    git clone https://github.com/cisco-ai-defense/skill-scanner /tmp/skill-scanner && \
+    pip install /tmp/skill-scanner && \
+    rm -rf /tmp/skill-scanner"
+
+# --- Layer 7: Full source (changes often, but COPY is fast + no installs after) ---
+COPY ./ /git/agent-zero
+RUN mkdir -p /git/agent-zero/usr/plugins /git/agent-zero/usr/agents /git/agent-zero/usr/knowledge /git/agent-zero/usr/skills /git/agent-zero/usr/workdir
+
+# --- Layer 8: Preload models (needs full source) ---
+RUN bash -c "source /opt/venv-a0/bin/activate && \
+    python /git/agent-zero/preload.py --dockerized=true"
+
+# --- Layer 9: Cleanup ---
+RUN bash /ins/post_install.sh $BRANCH && \
+    bash -c "source /opt/venv-a0/bin/activate && pip cache purge && uv cache prune"
 
 # Expose ports
 EXPOSE 22 80 9000-9009

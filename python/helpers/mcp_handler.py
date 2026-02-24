@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os
 import re
 from typing import (
     List,
@@ -79,6 +80,14 @@ def _determine_server_type(config_dict: dict) -> str:
 def _is_streaming_http_type(server_type: str) -> bool:
     """Check if the server type is a streaming HTTP variant."""
     return server_type.lower() in ["http-stream", "streaming-http", "streamable-http", "http-streaming"]
+
+
+_ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
+
+def _resolve_env_vars(env: dict[str, str] | None) -> dict[str, str] | None:
+    if not env:
+        return env
+    return {k: _ENV_VAR_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), v) for k, v in env.items()}
 
 
 def initialize_mcp(mcp_servers_config: str):
@@ -1018,7 +1027,8 @@ class MCPClientLocal(MCPClientBase):
         MemoryObjectReceiveStream[SessionMessage | Exception],
         MemoryObjectSendStream[SessionMessage],
     ]:
-        """Connect to an MCP server, init client and save stdio/write streams"""
+        """Connect to an MCP server, init client and save stdio/write streams.
+        Env values support ${VAR} syntax resolved from os.environ."""
         server: MCPServerLocal = cast(MCPServerLocal, self.server)
 
         if not server.command:
@@ -1029,7 +1039,7 @@ class MCPClientLocal(MCPClientBase):
         server_params = StdioServerParameters(
             command=server.command,
             args=server.args,
-            env=server.env,
+            env=_resolve_env_vars(server.env),
             encoding=server.encoding,
             encoding_error_handler=server.encoding_error_handler,
         )
