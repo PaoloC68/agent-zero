@@ -337,7 +337,7 @@ def save_plugin_config(
         plugin_name, project_name, agent_profile, CONFIG_FILE_NAME
     )
     if file_path:
-        files.write_file(file_path, yaml_helper.dumps(settings))
+        files.write_file(file_path, json.dumps(settings))
 
 
 def find_plugin_asset(
