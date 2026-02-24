@@ -38,7 +38,8 @@
                                 <label class="plugin-settings-toolbar-item">
                                     <span class="plugin-settings-toolbar-label">Project</span>
                                     <select x-model="$store.pluginToggle.projectName"
-                                            @change="$store.pluginToggle.onScopeChanged()">
+                                            @change="$store.pluginToggle.onScopeChanged()"
+                                            :disabled="!$store.pluginToggle.perProjectConfig">
                                         <option value="">Global</option>
                                         <template x-for="p in $store.pluginToggle.projects" :key="p.key">
                                             <option :value="p.key" x-text="p.label"></option>
@@ -49,7 +50,8 @@
                                 <label class="plugin-settings-toolbar-item">
                                     <span class="plugin-settings-toolbar-label">Agent profile</span>
                                     <select x-model="$store.pluginToggle.agentProfileKey"
-                                            @change="$store.pluginToggle.onScopeChanged()">
+                                            @change="$store.pluginToggle.onScopeChanged()"
+                                            :disabled="!$store.pluginToggle.perAgentConfig">
                                         <option value="">All profiles</option>
                                         <template x-for="a in $store.pluginToggle.agentProfiles" :key="a.key">
                                             <option :value="a.key" x-text="a.label"></option>

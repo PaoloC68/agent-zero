@@ -65,11 +65,14 @@ const model = {
       if (!pluginSettingsStore?.open) {
         throw new Error("Plugin settings store is unavailable.");
       }
-      // Set saveMode before open() so loadSettings picks up the right mode
+      await pluginSettingsStore.open(plugin.name, {
+        perProjectConfig: !!plugin.per_project_config,
+        perAgentConfig: !!plugin.per_agent_config,
+      });
+      // Set saveMode after open() (open resets it to 'plugin')
       if (plugin.settings_sections?.includes('core')) {
         pluginSettingsStore.saveMode = 'core';
       }
-      await pluginSettingsStore.open(plugin.name);
       window.openModal?.("components/plugins/plugin-settings.html");
     } catch (e) {
       showErrorNotification(e, "Failed to open plugin config");
@@ -100,14 +103,20 @@ const model = {
     }
 
     const enabled = value === 'enabled';
-    this.loading = true; // Show loading state
+    const clearOverrides = plugin.toggle_state === 'advanced';
+    if (clearOverrides && !window.confirm(
+        `"${plugin.display_name || plugin.name}" has per-scope activation rules that will be removed. Set globally to ${enabled ? 'ON' : 'OFF'}?`
+    )) return;
+
+    this.loading = true;
     try {
         const response = await api.callJsonApi("plugins", {
             action: "toggle_plugin",
             plugin_name: plugin.name,
             enabled: enabled,
-            project_name: "", // Global
-            agent_profile: "" // Global
+            project_name: "",
+            agent_profile: "",
+            clear_overrides: clearOverrides,
         });
         if (response?.error) throw new Error(response.error);
         await this.refresh();

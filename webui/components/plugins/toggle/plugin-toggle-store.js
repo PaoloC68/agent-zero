@@ -20,6 +20,8 @@ const model = {
     // Status: 'enabled' | 'disabled'
     status: 'enabled',
     alwaysEnabled: false,
+    perProjectConfig: true,
+    perAgentConfig: true,
     explicitPath: null,
     configs: [],
 
@@ -35,10 +37,16 @@ const model = {
         const pluginName = typeof plugin === 'string' ? plugin : plugin?.name;
         this.pluginName = pluginName;
         this.alwaysEnabled = typeof plugin === 'object' ? !!plugin.always_enabled : false;
+        this.perProjectConfig = typeof plugin === 'object' ? !!plugin.per_project_config : true;
+        this.perAgentConfig = typeof plugin === 'object' ? !!plugin.per_agent_config : true;
 
         try {
             await Promise.all([this.loadProjects(), this.loadAgentProfiles()]);
             await this.loadConfigs();
+            // Auto-save ON for the default scope (Global + All profiles)
+            if (!this.explicitPath && !this.alwaysEnabled && this.pluginName) {
+                await this.setEnabled(true);
+            }
         } finally {
             this.isLoading = false;
         }
@@ -50,6 +58,9 @@ const model = {
         this.agentProfileKey = "";
         this.error = null;
         this.configs = [];
+        this.perProjectConfig = true;
+        this.perAgentConfig = true;
+        this.alwaysEnabled = false;
     },
 
     async loadProjects() {
@@ -211,6 +222,11 @@ const model = {
 
     async onScopeChanged() {
         this.calculateStatus();
+
+        // Auto-save immediately so the displayed default state is persisted
+        if (!this.explicitPath && !this.alwaysEnabled && this.pluginName) {
+            await this.setEnabled(true);
+        }
 
         // Sync scope with settings store so its loadSettings picks up the right context
         settingsStore.projectName = this.projectName || "";

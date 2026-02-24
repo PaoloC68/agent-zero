@@ -126,9 +126,10 @@ Key Files:
 
 ### Plugin Architecture
 - Location: Always develop new plugins in usr/plugins/.
-- Manifest: Every plugin requires a plugin.json with name, description, version, and optionally settings_sections.
+- Manifest: Every plugin requires a plugin.yaml with name, description, version, and optionally settings_sections, per_project_config, per_agent_config, and always_enabled.
 - Discovery: Conventions based on folder names (api/, tools/, webui/, extensions/).
 - Settings: Use get_plugin_config(plugin_name, agent=agent) to retrieve settings. Plugins can expose a UI for settings via webui/config.html. For plugins wrapping core settings, set $store.pluginSettings.saveMode = 'core' in x-init.
+- Activation: Global and scoped activation rules are stored as .toggle-1 (ON) and .toggle-0 (OFF). Scoped rules are handled via the plugin "Switch" modal.
 
 ### Lifecycle Synchronization
 | Action | Backend Extension | Frontend Lifecycle |

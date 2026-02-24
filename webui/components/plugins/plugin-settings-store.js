@@ -169,6 +169,9 @@ const model = {
     // 'core'   = save via $store.settings.saveSettings() (for plugins that surface core settings)
     saveMode: 'plugin',
 
+    perProjectConfig: true,
+    perAgentConfig: true,
+
     isLoading: false,
     isSaving: false,
     error: null,
@@ -176,13 +179,15 @@ const model = {
     // Called by the subsection button before openModal()
     // Optional scope: { projectName, agentProfileKey } — skips redundant global loadSettings()
     // when the caller already knows which scope to open at.
-    async open(pluginName, { projectName = "", agentProfileKey = "" } = {}) {
+    async open(pluginName, { projectName = "", agentProfileKey = "", perProjectConfig = true, perAgentConfig = true } = {}) {
         this.pluginName = pluginName;
         this.pluginMeta = null;
         this.settings = {};
         this.settingsSnapshotJson = "";
         this.error = null;
         this.saveMode = 'plugin';
+        this.perProjectConfig = perProjectConfig;
+        this.perAgentConfig = perAgentConfig;
         this.projectName = projectName;
         this.agentProfileKey = agentProfileKey;
         this.previousProjectName = projectName;
@@ -316,6 +321,8 @@ const model = {
         this.isListingConfigs = false;
         this.configsError = null;
         this.configs = [];
+        this.perProjectConfig = true;
+        this.perAgentConfig = true;
     },
 
     // Reactive URL for the plugin's settings component (used with x-html injection)

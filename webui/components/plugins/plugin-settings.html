@@ -11,8 +11,9 @@
             <div x-create="$store.pluginSettings.onModalOpen()"
                  x-destroy="$store.pluginSettings.cleanup()">
 
-                <!-- Context toolbar: Project + Agent profile (mirrors skills list) -->
-                <div class="plugin-settings-scope-section">
+                <!-- Context toolbar: Project + Agent profile (only when at least one scope is configurable) -->
+                <div class="plugin-settings-scope-section"
+                     x-show="$store.pluginSettings.perProjectConfig || $store.pluginSettings.perAgentConfig">
                     <div class="plugin-settings-scope-header">
                         <div class="plugin-settings-scope-title">Settings scope</div>
                         <div class="plugin-settings-scope-desc">This plugin supports settings per project or agent profile.</div>
@@ -24,7 +25,8 @@
                             <span class="plugin-settings-toolbar-label">Project</span>
                             <select x-model="$store.pluginSettings.projectName"
                                     x-init="$nextTick(() => $el.value = $store.pluginSettings.projectName)"
-                                    @change="$store.pluginSettings.onScopeChanged()">
+                                    @change="$store.pluginSettings.onScopeChanged()"
+                                    :disabled="!$store.pluginSettings.perProjectConfig">
                                 <option value="">Global</option>
                                 <template x-for="project in $store.pluginSettings.projects" :key="project.key">
                                     <option :value="project.key" x-text="project.label"></option>
@@ -36,7 +38,8 @@
                             <span class="plugin-settings-toolbar-label">Agent profile</span>
                             <select x-model="$store.pluginSettings.agentProfileKey"
                                     x-init="$nextTick(() => $el.value = $store.pluginSettings.agentProfileKey)"
-                                    @change="$store.pluginSettings.onScopeChanged()">
+                                    @change="$store.pluginSettings.onScopeChanged()"
+                                    :disabled="!$store.pluginSettings.perAgentConfig">
                                 <option value="">All profiles</option>
                                 <template x-for="profile in $store.pluginSettings.agentProfiles" :key="profile.key">
                                     <option :value="profile.key" x-text="profile.label"></option>
@@ -50,7 +53,7 @@
 
                     </div>
 
-                    <!-- Activation row: ON/OFF toggle + link to Advanced per-scope modal -->
+                    <!-- Activation row: ON/OFF toggle -->
                     <div class="plugin-settings-toolbar plugin-activation-toolbar" x-show="$store.pluginToggle">
                         <div class="plugin-settings-toolbar-row">
                             <div class="plugin-activation-toggle-group">
@@ -63,11 +66,6 @@
                                 </label>
                                 <span class="plugin-toggle-status-text" x-text="$store.pluginToggle?.statusLabel"></span>
                             </div>
-                            <button type="button" class="button plugin-settings-toolbar-button"
-                                    @click="window.openModal?.('components/plugins/toggle/plugin-toggle-advanced.html')">
-                                <span class="icon material-symbols-outlined">toggle_on</span>
-                                Switch
-                            </button>
                         </div>
                     </div>
                 </div>

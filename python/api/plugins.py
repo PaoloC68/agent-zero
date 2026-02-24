@@ -120,6 +120,7 @@ class Plugins(ApiHandler):
             enabled = input.get("enabled")
             project_name = input.get("project_name", "")
             agent_profile = input.get("agent_profile", "")
+            clear_overrides = bool(input.get("clear_overrides", False))
 
             if not plugin_name:
                 return Response(status=400, response="Missing plugin_name")
@@ -127,7 +128,7 @@ class Plugins(ApiHandler):
                 return Response(status=400, response="Missing enabled state")
 
             plugins.toggle_plugin(
-                plugin_name, bool(enabled), project_name, agent_profile
+                plugin_name, bool(enabled), project_name, agent_profile, clear_overrides
             )
             return {"ok": True}
 
