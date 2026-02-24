@@ -22,8 +22,14 @@ usr/*
 ###############################################################################
 .conda/
 .cursor/
+.idea/
 .venv/
 .git/
+.sisyphus/
+
+# Cloned repos / external projects (not needed in image)
+agent-zero-cisco-guard/
+skill-scanner-guide.md
 
 
 ###############################################################################
