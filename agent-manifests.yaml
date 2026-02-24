@@ -217,16 +217,12 @@ spec:
               fi
 
               if [ ! -d ".git" ]; then
-                echo "No .git directory found, cloning repo..."
-                rm -rf ./*
+                echo "No .git found — first-time bootstrap from repo..."
                 git clone --branch "$GIT_BRANCH" "$GIT_REPO" .
               else
-                echo ".git directory exists, pulling latest..."
-                if ! git pull --ff-only; then
-                  echo "WARNING: git pull failed — resetting to origin/$GIT_BRANCH"
-                  git fetch origin
-                  git reset --hard "origin/$GIT_BRANCH"
-                fi
+                echo ".git exists — PVC is source of truth, skipping pull."
+                git config user.name "agent-zero-gitops"
+                git config user.email "gitops@helpa0.com"
               fi
       containers:
         - name: agent-zero
@@ -250,13 +246,11 @@ spec:
               readOnly: true
           resources:
             requests:
-              cpu: "250m"
-              memory: "1Gi"
+              cpu: "500m"
+              memory: "2Gi"
             limits:
-              cpu: "1500m"
-              memory: "4Gi"
-          # NOTE: /api/health exists on development branch but not on main.
-          # /login always returns 200 regardless of auth config.
+              cpu: "2000m"
+              memory: "6Gi"
           startupProbe:
             httpGet:
               path: /login
@@ -264,17 +258,84 @@ spec:
             failureThreshold: 30
             periodSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /login
+            tcpSocket:
               port: http
             periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
           livenessProbe:
-            httpGet:
-              path: /login
+            tcpSocket:
               port: http
-            periodSeconds: 15
-            failureThreshold: 5
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+        - name: git-sync
+          image: alpine/git:2.45.2
+          env:
+            - name: GIT_BRANCH
+              value: "main"
+            - name: SYNC_INTERVAL
+              value: "60"
+            - name: GITHUB_PAT
+              valueFrom:
+                secretKeyRef:
+                  name: agents-secrets
+                  key: GITHUB_PAT
+          volumeMounts:
+            - name: agent-zero-data
+              mountPath: /a0/usr
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              cd /a0/usr
+
+              # Configure git auth
+              git config --global credential.helper store
+              printf "https://%s:x-oauth-basic@github.com\n" "$GITHUB_PAT" > /root/.git-credentials
+              git config user.name "agent-zero-gitops"
+              git config user.email "gitops@helpa0.com"
+
+              sync_changes() {
+                if [ -z "$(git status --porcelain)" ]; then
+                  echo "$(date -Iseconds) No changes"
+                  return 0
+                fi
+
+                echo "$(date -Iseconds) Changes detected, committing..."
+                git add -A
+                git commit -m "auto: sync $(date -Iseconds)" || true
+
+                if ! git push origin "$GIT_BRANCH" 2>/dev/null; then
+                  echo "$(date -Iseconds) Push rejected, rebasing local on top of remote..."
+                  git fetch origin
+                  if git rebase "origin/$GIT_BRANCH"; then
+                    git push origin "$GIT_BRANCH" || echo "$(date -Iseconds) WARNING: push failed after rebase"
+                  else
+                    git rebase --abort 2>/dev/null || true
+                    echo "$(date -Iseconds) ERROR: rebase failed, force-pushing (PVC is source of truth)"
+                    git push --force-with-lease origin "$GIT_BRANCH" || echo "$(date -Iseconds) WARNING: force push failed"
+                  fi
+                fi
+              }
+
+              # Final sync on SIGTERM (graceful shutdown)
+              trap 'echo "SIGTERM received, final sync..."; sync_changes; exit 0' TERM INT
+
+              echo "git-sync sidecar started (interval: ${SYNC_INTERVAL}s)"
+              while true; do
+                sleep "$SYNC_INTERVAL" &
+                wait $!
+                sync_changes
+              done
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
 ---
 apiVersion: v1
 kind: Service
