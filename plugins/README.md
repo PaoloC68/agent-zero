@@ -16,7 +16,8 @@ For detailed guides on how to create, extend, or configure plugins, please refer
 
 ## Usage
 
-Plugins are automatically discovered based on the presence of a plugin.json file. Each plugin can contribute:
+Plugins are automatically discovered based on the presence of a plugin.yaml file. Each plugin can contribute:
 - Backend: APIs, Tools, Helpers, and Lifecycle Extensions.
 - Frontend: HTML/JS UI contributions via core breakpoints.
 - Config: Isolated settings scoped per-project and per-agent profile.
+- Activation: Global/scoped ON-OFF rules via `.toggle-1` and `.toggle-0` files, including advanced per-scope switching in WebUI.

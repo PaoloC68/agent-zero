@@ -1,6 +1,8 @@
 import { createStore } from "/js/AlpineStore.js";
 import * as api from "/js/api.js";
 import "/components/plugins/plugin-settings-store.js";
+import "/components/plugins/toggle/plugin-toggle-store.js";
+import "/components/modals/markdown/markdown-store.js";
 import {
   store as notificationStore,
   defaultPriority,
@@ -56,14 +58,89 @@ const model = {
   async openPluginConfig(plugin) {
     if (!plugin?.name || !plugin?.has_config_screen) return;
     try {
+      // Initialize toggle store for activation state UI in settings modal
+      const pluginToggleStore = Alpine.store("pluginToggle");
+      if (pluginToggleStore?.open) await pluginToggleStore.open(plugin);
+
       const pluginSettingsStore = Alpine.store("pluginSettings");
       if (!pluginSettingsStore?.open) {
         throw new Error("Plugin settings store is unavailable.");
       }
-      await pluginSettingsStore.open(plugin.name);
+      await pluginSettingsStore.open(plugin.name, {
+        perProjectConfig: !!plugin.per_project_config,
+        perAgentConfig: !!plugin.per_agent_config,
+      });
+      // Set saveMode after open() (open resets it to 'plugin')
+      if (plugin.settings_sections?.includes('core')) {
+        pluginSettingsStore.saveMode = 'core';
+      }
       window.openModal?.("components/plugins/plugin-settings.html");
     } catch (e) {
       showErrorNotification(e, "Failed to open plugin config");
+    }
+  },
+
+  async openPluginAdvancedToggle(plugin) {
+    if (!plugin?.name) return;
+    this.selectedPlugin = plugin;
+    try {
+        const pluginToggleStore = Alpine.store("pluginToggle");
+        if (!pluginToggleStore?.open) {
+            throw new Error("Plugin toggle store is unavailable.");
+        }
+        await pluginToggleStore.open(plugin);
+        window.openModal?.("components/plugins/toggle/plugin-toggle-advanced.html");
+    } catch (e) {
+        showErrorNotification(e, "Failed to open plugin switch");
+    }
+  },
+
+  async updateToggle(plugin, value) {
+    if (!plugin?.name) return;
+    
+    if (value === 'advanced') {
+        await this.openPluginAdvancedToggle(plugin);
+        return; 
+    }
+
+    const enabled = value === 'enabled';
+    const clearOverrides = plugin.toggle_state === 'advanced';
+    if (clearOverrides && !window.confirm(
+        `"${plugin.display_name || plugin.name}" has per-scope activation rules that will be removed. Set globally to ${enabled ? 'ON' : 'OFF'}?`
+    )) return;
+
+    this.loading = true;
+    try {
+        const response = await api.callJsonApi("plugins", {
+            action: "toggle_plugin",
+            plugin_name: plugin.name,
+            enabled: enabled,
+            project_name: "",
+            agent_profile: "",
+            clear_overrides: clearOverrides,
+        });
+        if (response?.error) throw new Error(response.error);
+        await this.refresh();
+    } catch (e) {
+        showErrorNotification(e, "Failed to toggle plugin");
+        this.loading = false;
+    }
+  },
+
+  async openPluginDoc(plugin, doc) {
+    try {
+      const response = await api.callJsonApi("plugins", {
+        action: "get_doc",
+        plugin_name: plugin.name,
+        doc,
+      });
+      if (response?.error) throw new Error(response.error);
+      const markdownModal = Alpine.store("markdownModal");
+      if (!markdownModal) throw new Error("Markdown modal store unavailable.");
+      markdownModal.open(response.filename, response.content);
+      window.openModal?.("components/modals/markdown/markdown-modal.html");
+    } catch (e) {
+      showErrorNotification(e, "Failed to open document");
     }
   },
 

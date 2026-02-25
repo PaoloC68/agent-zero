@@ -82,7 +82,14 @@ class Plugins(ApiHandler):
                 agent_profile="*",
                 only_first=False,
             )
-            allowed_paths = {c.get("path", "") for c in configs}
+            toggles = plugins.find_plugin_assets(
+                plugins.TOGGLE_FILE_PATTERN,
+                plugin_name=plugin_name,
+                project_name="*",
+                agent_profile="*",
+                only_first=False,
+            )
+            allowed_paths = {c.get("path", "") for c in configs + toggles}
             if path not in allowed_paths:
                 return Response(status=400, response="Invalid path")
 
@@ -107,5 +114,41 @@ class Plugins(ApiHandler):
                 return Response(status=400, response="settings must be an object")
             plugins.save_plugin_config(plugin_name, project_name, agent_profile, settings)
             return {"ok": True}
+
+        if action == "toggle_plugin":
+            plugin_name = input.get("plugin_name", "")
+            enabled = input.get("enabled")
+            project_name = input.get("project_name", "")
+            agent_profile = input.get("agent_profile", "")
+            clear_overrides = bool(input.get("clear_overrides", False))
+
+            if not plugin_name:
+                return Response(status=400, response="Missing plugin_name")
+            if enabled is None:
+                return Response(status=400, response="Missing enabled state")
+
+            plugins.toggle_plugin(
+                plugin_name, bool(enabled), project_name, agent_profile, clear_overrides
+            )
+            return {"ok": True}
+
+        if action == "get_doc":
+            plugin_name = input.get("plugin_name", "")
+            doc = input.get("doc", "")  # "readme" or "license"
+            if not plugin_name:
+                return Response(status=400, response="Missing plugin_name")
+            if doc not in ("readme", "license"):
+                return Response(status=400, response="doc must be 'readme' or 'license'")
+
+            plugin_dir = plugins.find_plugin_dir(plugin_name)
+            if not plugin_dir:
+                return Response(status=404, response="Plugin not found")
+
+            filename = "README.md" if doc == "readme" else "LICENSE"
+            file_path = files.get_abs_path(plugin_dir, filename)
+            if not files.exists(file_path):
+                return Response(status=404, response=f"{filename} not found")
+
+            return {"ok": True, "content": files.read_file(file_path), "filename": filename}
 
         return Response(status=400, response=f"Unknown action: {action}")

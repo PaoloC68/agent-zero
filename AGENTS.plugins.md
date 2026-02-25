@@ -23,12 +23,12 @@ Each plugin lives in usr/plugins/<plugin_name>/.
 
 ```text
 usr/plugins/<plugin_name>/
-├── plugin.json                   # Required: Name, version, settings config
+├── plugin.yaml                   # Required: Name, version, settings + activation metadata
 ├── api/                          # API handlers (ApiHandler subclasses)
 ├── tools/                        # Agent tools (Tool subclasses)
 ├── helpers/                      # Shared Python logic
 ├── prompts/                      # Prompt templates
-├── agents/                       # Agent profiles
+├── agents/                       # Agent profiles (agents/<profile>/agent.yaml)
 ├── extensions/
 │   ├── python/<point>/           # Backend lifecycle hooks
 │   └── webui/<point>/            # UI HTML/JS contributions
@@ -37,14 +37,17 @@ usr/plugins/<plugin_name>/
     └── ...                       # Full plugin pages/components
 ```
 
-### plugin.json format
-```json
-{
-  "name": "My Plugin",
-  "description": "What this plugin does.",
-  "version": "1.0.0",
-  "settings_sections": ["agent"]
-}
+### plugin.yaml format
+```yaml
+title: My Plugin
+description: What this plugin does.
+version: 1.0.0
+settings_sections:
+  - agent
+per_project_config: false
+per_agent_config: false
+# Optional: lock plugin permanently ON in UI/back-end
+always_enabled: false
 ```
 settings_sections values: agent, external, mcp, developer, backup.
 
@@ -75,16 +78,25 @@ Place *.js files in extensions/webui/<extension_point>/ and export a default asy
 2. project/.a0proj/plugins/<name>/config.json
 3. usr/agents/<profile>/plugins/<name>/config.json
 4. usr/plugins/<name>/config.json
+5. plugins/<name>/default_config.yaml (fallback defaults)
+
+## 5. Plugin Activation Model
+
+- Global and scoped activation are independent, with no inheritance between scopes.
+- Activation flags are files: `.toggle-1` (ON) and `.toggle-0` (OFF).
+- UI states are `ON`, `OFF`, and `Advanced` (shown when any project/profile-specific override exists).
+- `always_enabled: true` in `plugin.yaml` forces ON and disables toggle controls in the UI.
+- The "Switch" modal is the canonical per-scope activation surface, and "Configure Plugin" keeps scope synchronized with the settings modal.
 
 ---
 
-## 5. Routes
+## 6. Routes
 
 | Route | Purpose |
 |---|---|
 | GET /plugins/<name>/<path> | Serve static assets |
 | POST /api/plugins/<name>/<handler> | Call plugin API |
-| POST /api/plugins | Management (action: get_config, save_config) |
+| POST /api/plugins | Management (actions: get_config, save_config, list_configs, delete_config, toggle_plugin) |
 
 ---
 

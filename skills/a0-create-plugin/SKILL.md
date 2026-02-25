@@ -1,6 +1,6 @@
 ---
 name: a0-create-plugin
-description: Create, extend, or modify Agent Zero plugins. Follows strict full-stack conventions (usr/plugins, plugin.json, Store Gating, AgentContext, plugin settings). Use for UI hooks, API handlers, lifecycle extensions, or plugin settings UI.
+description: Create, extend, or modify Agent Zero plugins. Follows strict full-stack conventions (usr/plugins, plugin.yaml, Store Gating, AgentContext, plugin settings). Use for UI hooks, API handlers, lifecycle extensions, or plugin settings UI.
 ---
 
 # Agent Zero Plugin Development
@@ -12,22 +12,24 @@ Primary references:
 - /a0/AGENTS.md (Full-stack architecture & AgentContext)
 - /a0/docs/agents/AGENTS.components.md (Component system deep dive)
 - /a0/docs/agents/AGENTS.modals.md (Modal system & CSS conventions)
-- /a0/AGENTS.plugins.md (Extension points, plugin.json, settings system)
+- /a0/AGENTS.plugins.md (Extension points, plugin.yaml, settings system)
 
-## Plugin Manifest (plugin.json)
+## Plugin Manifest (plugin.yaml)
 
-Every plugin must have a plugin.json or it will not be discovered:
+Every plugin must have a plugin.yaml or it will not be discovered:
 
-```json
-{
-  "name": "My Plugin",
-  "description": "What this plugin does.",
-  "version": "1.0.0",
-  "settings_sections": ["agent"]
-}
+```yaml
+title: My Plugin
+description: What this plugin does.
+version: 1.0.0
+settings_sections:
+  - agent
+per_project_config: false
+per_agent_config: false
 ```
 
 settings_sections controls which Settings tabs show a subsection for this plugin. Valid values: agent, external, mcp, developer, backup. Use [] for no subsection.
+Activation defaults to ON when no toggle rule exists. Set `per_project_config` and/or `per_agent_config` to enable advanced per-scope switching. Core system plugins may also use `always_enabled: true` to lock the plugin permanently ON (reserved for framework use).
 
 ## Mandatory Frontend Patterns
 
@@ -64,7 +66,7 @@ Import it in the HTML <head>:
 
 ## Plugin Settings
 
-If your plugin needs user-configurable settings, add webui/config.html. The system detects it automatically and shows a Settings button in the relevant tabs (per settings_sections in plugin.json).
+If your plugin needs user-configurable settings, add webui/config.html. The system detects it automatically and shows a Settings button in the relevant tabs (per settings_sections in plugin.yaml).
 
 ### Settings modal contract
 
@@ -143,7 +145,10 @@ save_plugin_config(
 ## Directory Layout
 ```
 usr/plugins/<name>/
-  plugin.json           # Required manifest
+  plugin.yaml           # Required manifest
+  default_config.yaml   # Optional default settings fallback
+  agents/
+    <profile>/agent.yaml # Optional plugin-distributed agent profile
   api/                  # API Handlers (ApiHandler base class)
   tools/                # Tool subclasses
   extensions/

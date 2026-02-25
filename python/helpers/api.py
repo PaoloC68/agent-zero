@@ -16,7 +16,8 @@ from python.helpers import files, cache
 
 ThreadLockType = Union[threading.Lock, threading.RLock]
 
-CACHE_AREA = "api_handlers"
+CACHE_AREA = "api_handlers(api)(plugins)"
+CACHE_ENABLED = False
 
 
 Input = dict
@@ -167,7 +168,7 @@ def requires_api_key(f):
 def requires_loopback(f):
     @wraps(f)
     async def decorated(*args, **kwargs):
-        if not is_loopback_address(request.remote_addr):
+        if not is_loopback_address(str(request.remote_addr)):
             return Response("Access denied.", 403, {})
         return await f(*args, **kwargs)
 
@@ -209,9 +210,10 @@ def register_api_route(app: Flask, lock: ThreadLockType) -> None:
 
     async def _dispatch(path: str) -> BaseResponse:
         # Return cached wrapped handler if available
-        cached = cache.get(CACHE_AREA, path)
-        if cached is not None:
-            return await cached()
+        if CACHE_ENABLED:
+            cached = cache.get(CACHE_AREA, path)
+            if cached is not None:
+                return await cached()
 
         # Resolve file path for the handler
         # Try built-in api folder first, then plugin api folders
@@ -259,7 +261,8 @@ def register_api_route(app: Flask, lock: ThreadLockType) -> None:
         if handler_cls.requires_loopback():
             handler_fn = requires_loopback(handler_fn)
 
-        cache.add(CACHE_AREA, path, handler_fn)
+        if CACHE_ENABLED:
+            cache.add(CACHE_AREA, path, handler_fn)
         return await handler_fn()
 
     app.add_url_rule(
