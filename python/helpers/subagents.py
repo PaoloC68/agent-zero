@@ -399,11 +399,8 @@ def get_paths(
         # plugins/*/subpaths...
         from python.helpers import plugins
 
-        for plugin in plugins.get_plugins_list():
-            plugin_dir = plugins.find_plugin_dir(plugin)
-            if not plugin_dir:
-                continue
-            path = os.path.join(plugin_dir, *subpaths)
+        for plugin_dir in plugins.get_enabled_plugin_paths(agent):
+            path = files.get_abs_path(plugin_dir, *subpaths)
             if (not must_exist_completely) or files.exists(path):
                 if path not in paths:
                     paths.append(path)
