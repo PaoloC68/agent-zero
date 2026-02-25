@@ -2,9 +2,18 @@ from __future__ import annotations
 
 import re, json, glob
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Literal, Optional, TYPE_CHECKING, TypedDict
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    TYPE_CHECKING,
+    TypedDict,
+)
 
-from python.helpers import files, print_style, yaml as yaml_helper
+from python.helpers import files, print_style, yaml as yaml_helper, cache
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
@@ -17,10 +26,13 @@ _META_TARGET_RE = re.compile(
 )
 
 type ToggleState = Literal["enabled", "disabled", "advanced"]
+
+
 class PluginAssetFile(TypedDict):
     path: str
     project_name: str
     agent_profile: str
+
 
 META_FILE_NAME = "plugin.yaml"
 CONFIG_FILE_NAME = "config.json"
@@ -59,7 +71,11 @@ class PluginListItem(BaseModel):
     toggle_state: ToggleState = "disabled"
 
 
-def get_plugin_roots(plugin_name:str="") -> List[str]:
+def invalidate_plugin_cache():
+    cache.clear("*(plugins)*")
+
+
+def get_plugin_roots(plugin_name: str = "") -> List[str]:
     """Plugin root directories, ordered by priority (user first)."""
     return [
         files.get_abs_path(files.USER_DIR, files.PLUGINS_DIR, plugin_name),
@@ -97,9 +113,7 @@ def get_enhanced_plugins_list(
                 meta_file = str(d / META_FILE_NAME)
                 if not files.exists(meta_file):
                     continue
-                meta = PluginMetadata.model_validate(
-                    files.read_file_yaml(meta_file)
-                )
+                meta = PluginMetadata.model_validate(files.read_file_yaml(meta_file))
                 has_main_screen = files.exists(str(d / "webui" / "main.html"))
                 has_config_screen = files.exists(str(d / "webui" / "config.html"))
                 has_readme = files.exists(str(d / "README.md"))
@@ -233,7 +247,8 @@ def get_enabled_plugins(agent: Agent | None):
 
     return active
 
-def determined_toggle_from_paths(default:bool, paths:Iterator[str]):
+
+def determined_toggle_from_paths(default: bool, paths: Iterator[str]):
     enabled = default
     for plugin_path in paths:
         if enabled:
@@ -241,10 +256,9 @@ def determined_toggle_from_paths(default:bool, paths:Iterator[str]):
                 files.get_abs_path(plugin_path, DISABLED_FILE_NAME)
             )
         else:
-            enabled = files.exists(
-                files.get_abs_path(plugin_path, ENABLED_FILE_NAME)
-            )
+            enabled = files.exists(files.get_abs_path(plugin_path, ENABLED_FILE_NAME))
     return enabled
+
 
 def get_toggle_state(plugin_name: str) -> ToggleState:
     meta = get_plugin_meta(plugin_name)
@@ -255,12 +269,22 @@ def get_toggle_state(plugin_name: str) -> ToggleState:
 
     # root plugin paths
     plugin_paths = get_plugin_roots(plugin_name)
-    state = "enabled" if determined_toggle_from_paths(True, reversed(plugin_paths)) else "disabled"
+    state = (
+        "enabled"
+        if determined_toggle_from_paths(True, reversed(plugin_paths))
+        else "disabled"
+    )
 
     # global toggles
     usr_toggles = [
-        files.find_existing_paths_by_pattern(files.get_abs_path(files.PLUGINS_DIR, plugin_name, TOGGLE_FILE_PATTERN)),
-        files.find_existing_paths_by_pattern(files.get_abs_path(files.USER_DIR, files.PLUGINS_DIR, plugin_name, TOGGLE_FILE_PATTERN))
+        files.find_existing_paths_by_pattern(
+            files.get_abs_path(files.PLUGINS_DIR, plugin_name, TOGGLE_FILE_PATTERN)
+        ),
+        files.find_existing_paths_by_pattern(
+            files.get_abs_path(
+                files.USER_DIR, files.PLUGINS_DIR, plugin_name, TOGGLE_FILE_PATTERN
+            )
+        ),
     ]
 
     # additional toggles in project/agent directories, return advanced
@@ -272,18 +296,10 @@ def get_toggle_state(plugin_name: str) -> ToggleState:
             agent_profile="*" if meta.per_agent_config else "",
             only_first=False,
         )
-        
-        # Advanced if there are specific overrides (project or agent specific)
-        specific_overrides = [
-            c for c in configs 
-            if c.get("project_name") or c.get("agent_profile")
-        ]
-        
-        if len(specific_overrides) > 0:
-            state = "advanced"
 
-    if state != "advanced" and meta.always_enabled:
-        return "enabled"
+        # Advanced if there are specific overrides (project or agent specific)
+        if any(c.get("project_name") or c.get("agent_profile") for c in configs):
+            state = "advanced"
 
     return state
 
@@ -291,8 +307,12 @@ def get_toggle_state(plugin_name: str) -> ToggleState:
 def toggle_plugin(
     plugin_name: str, enabled: bool, project_name: str = "", agent_profile: str = ""
 ):
-    enabled_file = determine_plugin_asset_path(plugin_name, project_name, agent_profile, ENABLED_FILE_NAME)
-    disabled_file = determine_plugin_asset_path(plugin_name, project_name, agent_profile, DISABLED_FILE_NAME)
+    enabled_file = determine_plugin_asset_path(
+        plugin_name, project_name, agent_profile, ENABLED_FILE_NAME
+    )
+    disabled_file = determine_plugin_asset_path(
+        plugin_name, project_name, agent_profile, DISABLED_FILE_NAME
+    )
 
     # ensure clean state by deleting both potential files first
     files.delete_file(enabled_file)
@@ -346,9 +366,9 @@ def get_plugin_config(
             find_plugin_dir(plugin_name), CONFIG_DEFAULT_FILE_NAME
         )
     if file_path and files.exists(file_path):
-        return (json.loads if file_path.lower().endswith(".json") else yaml_helper.loads)(
-            files.read_file(file_path)
-        )
+        return (
+            json.loads if file_path.lower().endswith(".json") else yaml_helper.loads
+        )(files.read_file(file_path))
     return None
 
 
