@@ -64,20 +64,28 @@ def extensible(func):
 
         # prepare extension points data
         module_name = getattr(func, "__module__", "")
-        func_name = getattr(func, "__name__", "")
-        start_point = f"{module_name}.{func_name}-start"
-        end_point = f"{module_name}.{func_name}-end"
+        qual_name = getattr(func, "__qualname__", "")
+
+        # skip if extension point cannot be determined
+        if not module_name or not qual_name:
+            return await func(*args, **kwargs)
+
+        start_point = f"{module_name}.{qual_name}-start"
+        end_point = f"{module_name}.{qual_name}-end"
+
+        def _get_agent() -> "Agent|None":
+            candidate = kwargs.get("agent")
+            if isinstance(candidate, Agent) and bool(getattr(candidate, "__dict__", None)):
+                return candidate
+
+            for a in args:
+                if isinstance(a, Agent) and bool(getattr(a, "__dict__", None)):
+                    return a
+
+            return None
 
         # try to find agent instance for better extension determination
-        agent = kwargs.get("agent")
-        if (not agent or not isinstance(agent, Agent)) and args:
-            try:
-                for a in args:
-                    if isinstance(a, Agent):
-                        agent = a
-                        break
-            except Exception:
-                agent = None
+        agent = _get_agent()
 
         # build extension data object - func input/output
         data = {
@@ -106,6 +114,7 @@ def extensible(func):
                 data["exception"] = e
 
         # call end extensions, these can modify outputs or exception
+        agent = _get_agent()
         await call_extensions(end_point, agent=agent, data=data)
 
         # if there's an exception, raise it

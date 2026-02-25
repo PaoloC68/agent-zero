@@ -11,7 +11,7 @@ from flask import Flask, request, Response, session, redirect, url_for, render_t
 from werkzeug.wrappers.request import Request as WerkzeugRequest
 
 import initialize
-from python.helpers import files, git, mcp_server, fasta2a_server, settings as settings_helper
+from python.helpers import files, git, mcp_server, fasta2a_server, settings as settings_helper, extension
 from python.helpers.files import get_abs_path
 from python.helpers import runtime, dotenv, process
 from python.helpers.websocket import WebSocketHandler, validate_ws_origin
@@ -83,6 +83,7 @@ websocket_manager.set_server_restart_broadcast(
 
 
 @webapp.route("/login", methods=["GET", "POST"])
+@extension.extensible
 async def login_handler():
     error = None
     if request.method == 'POST':
@@ -101,6 +102,7 @@ async def login_handler():
 
 
 @webapp.route("/logout")
+@extension.extensible
 async def logout_handler():
     session.pop('authentication', None)
     return redirect(url_for('login_handler'))
@@ -109,6 +111,7 @@ async def logout_handler():
 # handle default address, load index
 @webapp.route("/", methods=["GET"])
 @requires_auth
+@extension.extensible
 async def serve_index():
     gitinfo = None
     try:
@@ -142,6 +145,7 @@ async def serve_plugin_asset(plugin_name, asset_path):
     return await _serve_plugin_asset(plugin_name, asset_path)
 
 
+@extension.extensible
 async def _serve_plugin_asset(plugin_name, asset_path):
     """
     Serve static assets from plugin directories.
@@ -452,6 +456,7 @@ def wait_for_health(host: str, port: int):
         time.sleep(1)
 
 
+@extension.extensible
 def init_a0():
     # initialize contexts and MCP
     init_chats = initialize.initialize_chats()

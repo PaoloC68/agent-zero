@@ -15,7 +15,7 @@ from python.helpers import (
     tokens,
     context as context_helper,
     dirty_json,
-    subagents
+    subagents,
 )
 from python.helpers.print_style import PrintStyle
 
@@ -29,7 +29,7 @@ from python.helpers.dirty_json import DirtyJson
 from python.helpers.defer import DeferredTask
 from typing import Callable
 from python.helpers.localization import Localization
-from python.helpers.extension import call_extensions
+from python.helpers.extension import call_extensions, extensible
 from python.helpers.errors import RepairableException
 
 
@@ -46,6 +46,7 @@ class AgentContext:
     _counter: int = 0
     _notification_manager = None
 
+    @extensible
     def __init__(
         self,
         config: "AgentConfig",
@@ -151,6 +152,7 @@ class AgentContext:
         return cls._notification_manager
 
     @staticmethod
+    @extensible
     def remove(id: str):
         with AgentContext._contexts_lock:
             context = AgentContext._contexts.pop(id, None)
@@ -174,6 +176,7 @@ class AgentContext:
         # recursive is not used now, prepared for context hierarchy
         self.output_data[key] = value
 
+    @extensible
     def output(self):
         return {
             "id": self.id,
@@ -217,10 +220,12 @@ class AgentContext:
             )
         return items
 
+    @extensible
     def kill_process(self):
         if self.task:
             self.task.kill()
 
+    @extensible
     def reset(self):
         self.kill_process()
         self.log.reset()
@@ -228,6 +233,7 @@ class AgentContext:
         self.streaming_agent = None
         self.paused = False
 
+    @extensible
     def nudge(self):
         self.kill_process()
         self.paused = False
@@ -240,6 +246,7 @@ class AgentContext:
     def is_running(self) -> bool:
         return (self.task and self.task.is_alive()) or False
 
+    @extensible
     def communicate(self, msg: "UserMessage", broadcast_level: int = 1):
         self.paused = False  # unpause if paused
 
@@ -259,6 +266,7 @@ class AgentContext:
 
         return self.task
 
+    @extensible
     def run_task(
         self, func: Callable[..., Coroutine[Any, Any, Any]], *args: Any, **kwargs: Any
     ):
@@ -270,6 +278,7 @@ class AgentContext:
         return self.task
 
     # this wrapper ensures that superior agents are called back if the chat was loaded from file and original callstack is gone
+    @extensible
     async def _process_chain(self, agent: "Agent", msg: "UserMessage|str", user=True):
         try:
             msg_template = (
@@ -355,6 +364,7 @@ class Agent:
     DATA_NAME_SUBORDINATE = "_subordinate"
     DATA_NAME_CTX_WINDOW = "ctx_window"
 
+    @extensible
     def __init__(
         self, number: int, config: AgentConfig, context: AgentContext | None = None
     ):
@@ -376,6 +386,7 @@ class Agent:
 
         asyncio.run(self.call_extensions("agent_init"))
 
+    @extensible
     async def monologue(self):
         error_retries = 0  # counter for critical error retries
         while True:
@@ -530,6 +541,7 @@ class Agent:
                 if self.context.task and self.context.task.is_alive(): # don't call extensions post mortem
                     await self.call_extensions("monologue_end", loop_data=self.loop_data)  # type: ignore
 
+    @extensible
     async def prepare_prompt(self, loop_data: LoopData) -> list[BaseMessage]:
         self.context.log.set_progress("Building prompt")
 
@@ -581,6 +593,7 @@ class Agent:
 
         return full_prompt
 
+    @extensible
     async def retry_critical_exception(
         self, e: Exception, error_retries: int, delay: int = 3, max_retries: int = 1
     ) -> int:
@@ -606,6 +619,7 @@ class Agent:
         )
         return error_retries + 1
 
+    @extensible
     def handle_critical_exception(self, exception: Exception):
         if isinstance(exception, HandledException):
             raise exception  # Re-raise the exception to kill the loop
@@ -634,6 +648,7 @@ class Agent:
 
             raise HandledException(exception)  # Re-raise the exception to kill the loop
 
+    @extensible
     async def get_system_prompt(self, loop_data: LoopData) -> list[str]:
         system_prompt: list[str] = []
         await self.call_extensions(
@@ -641,6 +656,7 @@ class Agent:
         )
         return system_prompt
 
+    @extensible
     def parse_prompt(self, _prompt_file: str, **kwargs):
         dirs = subagents.get_paths(self, "prompts")
 
@@ -649,6 +665,7 @@ class Agent:
         )
         return prompt
 
+    @extensible
     def read_prompt(self, file: str, **kwargs) -> str:
         dirs = subagents.get_paths(self, "prompts")
 
@@ -663,6 +680,7 @@ class Agent:
     def set_data(self, field: str, value):
         self.data[field] = value
 
+    @extensible
     def hist_add_message(
         self, ai: bool, content: history.MessageContent, tokens: int = 0
     ):
@@ -676,6 +694,7 @@ class Agent:
             ai=ai, content=content_data["content"], tokens=tokens
         )
 
+    @extensible
     def hist_add_user_message(self, message: UserMessage, intervention: bool = False):
         self.history.new_topic()  # user message starts a new topic in history
 
@@ -704,15 +723,18 @@ class Agent:
         self.last_user_message = msg
         return msg
 
+    @extensible
     def hist_add_ai_response(self, message: str):
         self.loop_data.last_response = message
         content = self.parse_prompt("fw.ai_response.md", message=message)
         return self.hist_add_message(True, content=content)
 
+    @extensible
     def hist_add_warning(self, message: history.MessageContent):
         content = self.parse_prompt("fw.warning.md", message=message)
         return self.hist_add_message(False, content=content)
 
+    @extensible
     def hist_add_tool_result(self, tool_name: str, tool_result: str, **kwargs):
         data = {
             "tool_name": tool_name,
@@ -727,6 +749,7 @@ class Agent:
     ):  # TODO add param for message range, topic, history
         return self.history.output_text(human_label="user", ai_label="assistant")
 
+    @extensible
     def get_chat_model(self):
         return models.get_chat_model(
             self.config.chat_model.provider,
@@ -735,6 +758,7 @@ class Agent:
             **self.config.chat_model.build_kwargs(),
         )
 
+    @extensible
     def get_utility_model(self):
         return models.get_chat_model(
             self.config.utility_model.provider,
@@ -743,6 +767,7 @@ class Agent:
             **self.config.utility_model.build_kwargs(),
         )
 
+    @extensible
     def get_browser_model(self):
         return models.get_browser_model(
             self.config.browser_model.provider,
@@ -751,6 +776,7 @@ class Agent:
             **self.config.browser_model.build_kwargs(),
         )
 
+    @extensible
     def get_embedding_model(self):
         return models.get_embedding_model(
             self.config.embeddings_model.provider,
@@ -759,6 +785,7 @@ class Agent:
             **self.config.embeddings_model.build_kwargs(),
         )
 
+    @extensible
     async def call_utility_model(
         self,
         system: str,
@@ -794,6 +821,7 @@ class Agent:
 
         return response
 
+    @extensible
     async def call_chat_model(
         self,
         messages: list[BaseMessage],
@@ -820,6 +848,7 @@ class Agent:
 
         return response, reasoning
 
+    @extensible
     async def rate_limiter_callback(
         self, message: str, key: str, total: int, limit: int
     ):
@@ -827,6 +856,7 @@ class Agent:
         self.context.log.set_progress(message, True)
         return False
 
+    @extensible
     async def handle_intervention(self, progress: str = ""):
         while self.context.paused:
             await asyncio.sleep(0.1)  # wait if paused
@@ -852,6 +882,7 @@ class Agent:
         while self.context.paused:
             await asyncio.sleep(0.1)
 
+    @extensible
     async def process_tools(self, msg: str):
         # search for tool usage requests in agent message
         tool_request = extract_tools.json_parse_dirty(msg)
@@ -971,6 +1002,7 @@ class Agent:
         except Exception as e:
             pass
 
+    @extensible
     def get_tool(
         self,
         name: str,
