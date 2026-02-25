@@ -114,7 +114,8 @@
                                 </div>
                             </div>
                             
-                            <div class="plugin-controls-row">
+                            <div class="plugin-footer-row">
+                                <div class="plugin-description" x-text="plugin.description || 'No description provided.'"></div>
                                 <select class="plugin-status-select"
                                     @change="$store.pluginListStore.updateToggle(plugin, $event.target.value)"
                                     @click.stop
@@ -126,8 +127,6 @@
                                     </template>
                                 </select>
                             </div>
-
-                            <div class="plugin-description" x-text="plugin.description || 'No description provided.'"></div>
                         </div>
                     </template>
                 </div>
@@ -233,11 +232,12 @@
             font-size: 1.1rem;
         }
 
-        .plugin-controls-row {
-            margin-top: 0.5rem;
+        .plugin-footer-row {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 0.5rem;
         }
 
         .plugin-status-select {
@@ -249,6 +249,8 @@
             color: var(--color-text-primary);
             cursor: pointer;
             height: 2.2rem;
+            width: 8rem;
+            flex: 0 0 8rem;
         }
         
         .plugin-status-select:disabled {
@@ -258,9 +260,10 @@
         }
 
         .plugin-description {
-            margin-top: 0.35rem;
             color: var(--color-text-secondary);
             font-size: var(--font-size-small);
+            flex: 1 1 auto;
+            min-width: 0;
         }
 
         .plugin-path {
