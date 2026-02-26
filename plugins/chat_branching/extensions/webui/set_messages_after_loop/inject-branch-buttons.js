@@ -11,22 +11,22 @@ export default async function injectBranchButtons(context) {
   for (const { args, result } of context.results) {
     if (!result?.element || args.no == null) continue;
 
-    const bar = result.element.querySelector(".step-action-buttons");
-    if (!bar || bar.querySelector(".action-fork_right")) continue;
-
     const logNo = args.no;
-    bar.appendChild(
-      createActionButton("fork_right", "Branch chat", async () => {
-        const ctxid = globalThis.getContext?.();
-        if (!ctxid) throw new Error("No active chat");
+    for (const bar of result.element.querySelectorAll(".step-action-buttons")) {
+      if (bar.querySelector(".action-fork_right")) continue;
+      bar.appendChild(
+        createActionButton("fork_right", "Branch chat", async () => {
+          const ctxid = globalThis.getContext?.();
+          if (!ctxid) throw new Error("No active chat");
 
-        const res = await callJsonApi("/plugins/chat_branching/branch_chat", {
-          context: ctxid,
-          log_no: logNo,
-        });
-        if (!res?.ok) throw new Error(res?.message || "Branch failed");
-        chatsStore.selectChat(res.ctxid);
-      }),
-    );
+          const res = await callJsonApi("/plugins/chat_branching/branch_chat", {
+            context: ctxid,
+            log_no: logNo,
+          });
+          if (!res?.ok) throw new Error(res?.message || "Branch failed");
+          chatsStore.selectChat(res.ctxid);
+        }),
+      );
+    }
   }
 }
