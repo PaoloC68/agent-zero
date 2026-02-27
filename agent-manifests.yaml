@@ -297,7 +297,20 @@ spec:
               git config user.name "agent-zero-gitops"
               git config user.email "gitops@helpa0.com"
 
+              cleanup_locks() {
+                for lockfile in .git/index.lock .git/refs/heads/*.lock .git/HEAD.lock; do
+                  if [ -f "$lockfile" ]; then
+                    echo "$(date -Iseconds) Removing stale lock: $lockfile"
+                    rm -f "$lockfile"
+                  fi
+                done
+              }
+
+              cleanup_locks
+
               sync_changes() {
+                cleanup_locks
+
                 if [ -z "$(git status --porcelain)" ]; then
                   echo "$(date -Iseconds) No changes"
                   return 0
