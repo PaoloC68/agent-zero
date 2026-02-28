@@ -53,6 +53,7 @@ kubectl create secret generic "$SECRET_NAME" \
   --from-literal=AUTH_PASSWORD="$(get_secret AUTH_PASSWORD)" \
   --from-literal=OPENROUTER_API_KEY="$(get_secret OPENROUTER_API_KEY)" \
   --from-literal=API_KEY_GOOGLE="$(get_secret GEMINI_API_KEY)" \
-  --from-literal=API_KEY_BEDROCK="$(get_secret AWS_BEARER_TOKEN_BEDROCK)"
+  --from-literal=API_KEY_BEDROCK="$(get_secret AWS_BEARER_TOKEN_BEDROCK)" \
+  --from-literal=API_KEY_DEEPINFRA="$(get_secret DEEPINFRA_API_KEY)"
 
 echo "Created secret '$SECRET_NAME' in namespace '$NAMESPACE'."
