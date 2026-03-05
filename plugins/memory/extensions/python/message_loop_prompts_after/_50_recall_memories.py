@@ -1,7 +1,7 @@
 import asyncio
-from python.helpers.extension import Extension
+from helpers.extension import Extension
 from agent import LoopData
-from python.helpers import dirty_json, errors, log, plugins
+from helpers import dirty_json, errors, log, plugins
 
 # Direct import - this extension lives inside the memory plugin
 from plugins.memory.helpers.memory import Memory
@@ -24,6 +24,8 @@ class RecallMemories(Extension):
     # THRESHOLD = DEFAULT_MEMORY_THRESHOLD
 
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
+        if not self.agent:
+            return
 
         set = plugins.get_plugin_config("memory", self.agent)
         if not set:
@@ -56,6 +58,8 @@ class RecallMemories(Extension):
         self.agent.set_data(DATA_NAME_ITER, loop_data.iteration)
 
     async def search_memories(self, log_item: log.LogItem, loop_data: LoopData, **kwargs):
+        if not self.agent:
+            return
 
         # cleanup
         extras = loop_data.extras_persistent

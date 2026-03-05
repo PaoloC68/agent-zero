@@ -1,10 +1,10 @@
 import asyncio
-from python.helpers import errors, plugins
-from python.helpers.extension import Extension
-from python.helpers.dirty_json import DirtyJson
+from helpers import errors, plugins
+from helpers.extension import Extension
+from helpers.dirty_json import DirtyJson
 from agent import LoopData
-from python.helpers.log import LogItem
-from python.helpers.defer import DeferredTask, THREAD_BACKGROUND
+from helpers.log import LogItem
+from helpers.defer import DeferredTask, THREAD_BACKGROUND
 
 # Direct import - this extension lives inside the memory plugin
 from plugins.memory.helpers.memory import Memory
@@ -14,6 +14,8 @@ class MemorizeSolutions(Extension):
 
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
         # try:
+        if not self.agent:
+            return
 
         set = plugins.get_plugin_config("memory", self.agent)
         if not set:
@@ -35,7 +37,11 @@ class MemorizeSolutions(Extension):
         return task
 
     async def memorize(self, loop_data: LoopData, log_item: LogItem, **kwargs):
+        if not self.agent:
+            return
+
         try:
+
             set = plugins.get_plugin_config("memory", self.agent)
             if not set:
                 return None

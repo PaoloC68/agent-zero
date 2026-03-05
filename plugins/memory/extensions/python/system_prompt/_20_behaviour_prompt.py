@@ -1,6 +1,6 @@
-from python.helpers.extension import Extension
+from helpers.extension import Extension
 from agent import Agent, LoopData
-from python.helpers import files
+from helpers import files
 
 # Direct import - this extension lives inside the memory plugin
 from plugins.memory.helpers import memory
@@ -9,6 +9,9 @@ from plugins.memory.helpers import memory
 class BehaviourPrompt(Extension):
 
     async def execute(self, system_prompt: list[str]=[], loop_data: LoopData = LoopData(), **kwargs):
+        if not self.agent:
+            return
+
         prompt = read_rules(self.agent)
         system_prompt.insert(0, prompt)
 

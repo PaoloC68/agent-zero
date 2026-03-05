@@ -256,6 +256,10 @@ const model = {
         await settingsStore.loadSettings();
     },
 
+    async addRule() {
+        await this.setEnabled(this.status === 'enabled');
+    },
+
     projectLabel(key) {
         if (!key) return "Global";
         const found = (this.projects || []).find(p => p.key === key);
