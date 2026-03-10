@@ -80,13 +80,16 @@ To contribute:
 ### JS Hooks
 Place *.js files in extensions/webui/<extension_point>/ and export a default async function. They are called via callJsExtensions("<point>", context).
 
+Core JS hooks can also expose runtime UI surfaces when static HTML breakpoints are not a fit. For example, `confirm_dialog_after_render` runs after the shared confirm dialog is built and receives the rendered dialog/body/footer nodes plus any caller-provided `extensionContext`.
+
 ---
 
 ## 4. Plugin Settings
 
 1. Add webui/config.html to your plugin.
-2. Bind fields to $store.pluginSettings.settings.
-3. Settings are scoped per-project and per-agent automatically.
+2. The plugin settings wrapper instantiates a local modal context from $store.pluginSettingsPrototype.
+3. Bind plugin fields to config.* and use context.* for modal-level state and actions.
+4. Settings are scoped per-project and per-agent automatically.
 
 ### Resolution Priority (Highest First)
 1. project/.a0proj/agents/<profile>/plugins/<name>/config.json

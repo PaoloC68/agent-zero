@@ -30,7 +30,7 @@ from helpers.dirty_json import DirtyJson
 from helpers.defer import DeferredTask
 from typing import Callable
 from helpers.localization import Localization
-from helpers.extension import call_extensions, extensible
+from helpers import extension
 from helpers.errors import RepairableException, InterventionException, HandledException
 
 class AgentContextType(Enum):
@@ -46,7 +46,7 @@ class AgentContext:
     _counter: int = 0
     _notification_manager = None
 
-    @extensible
+    @extension.extensible
     def __init__(
         self,
         config: "AgentConfig",
@@ -152,7 +152,7 @@ class AgentContext:
         return cls._notification_manager
 
     @staticmethod
-    @extensible
+    @extension.extensible
     def remove(id: str):
         with AgentContext._contexts_lock:
             context = AgentContext._contexts.pop(id, None)
@@ -176,7 +176,7 @@ class AgentContext:
         # recursive is not used now, prepared for context hierarchy
         self.output_data[key] = value
 
-    # @extensible
+    @extension.extensible
     def output(self):
         return {
             "id": self.id,
@@ -220,12 +220,12 @@ class AgentContext:
             )
         return items
 
-    @extensible
+    @extension.extensible
     def kill_process(self):
         if self.task:
             self.task.kill()
 
-    @extensible
+    @extension.extensible
     def reset(self):
         self.kill_process()
         self.log.reset()
@@ -233,21 +233,21 @@ class AgentContext:
         self.streaming_agent = None
         self.paused = False
 
-    @extensible
+    @extension.extensible
     def nudge(self):
         self.kill_process()
         self.paused = False
         self.task = self.communicate(UserMessage(self.agent0.read_prompt("fw.msg_nudge.md")))
         return self.task
 
-    @extensible
+    @extension.extensible
     def get_agent(self):
         return self.streaming_agent or self.agent0
 
     def is_running(self) -> bool:
         return (self.task and self.task.is_alive()) or False
 
-    @extensible
+    @extension.extensible
     def communicate(self, msg: "UserMessage", broadcast_level: int = 1):
         self.paused = False  # unpause if paused
 
@@ -267,7 +267,7 @@ class AgentContext:
 
         return self.task
 
-    @extensible
+    @extension.extensible
     def run_task(
         self, func: Callable[..., Coroutine[Any, Any, Any]], *args: Any, **kwargs: Any
     ):
@@ -279,7 +279,7 @@ class AgentContext:
         return self.task
 
     # this wrapper ensures that superior agents are called back if the chat was loaded from file and original callstack is gone
-    @extensible
+    @extension.extensible
     async def _process_chain(self, agent: "Agent", msg: "UserMessage|str", user=True):
         try:
             msg_template = (
@@ -295,13 +295,13 @@ class AgentContext:
                 response = await self._process_chain(superior, response, False)  # type: ignore
 
             # call end of process extensions
-            await self.get_agent().call_extensions("process_chain_end", data={})
+            await extension.call_extensions_async("process_chain_end", agent=self.get_agent(), data={})
 
             return response
         except Exception as e:
             await self.handle_exception("process_chain", e)
 
-    @extensible
+    @extension.extensible
     async def handle_exception(self, location: str, exception: Exception):
         if exception:
             raise exception # exception handling is done by extensions
@@ -319,11 +319,6 @@ class AgentConfig:
     browser_http_headers: dict[str, str] = field(
         default_factory=dict
     )  # Custom HTTP headers for browser requests
-    code_exec_ssh_enabled: bool = True
-    code_exec_ssh_addr: str = "localhost"
-    code_exec_ssh_port: int = 55022
-    code_exec_ssh_user: str = "root"
-    code_exec_ssh_pass: str = ""
     additional: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -358,7 +353,7 @@ class Agent:
     DATA_NAME_SUBORDINATE = "_subordinate"
     DATA_NAME_CTX_WINDOW = "ctx_window"
 
-    @extensible
+    @extension.extensible
     def __init__(
         self, number: int, config: AgentConfig, context: AgentContext | None = None
     ):
@@ -378,16 +373,18 @@ class Agent:
         self.intervention: UserMessage | None = None
         self.data: dict[str, Any] = {}  # free data object all the tools can use
 
-        asyncio.run(self.call_extensions("agent_init"))
+        extension.call_extensions_sync("agent_init", self)
 
-    @extensible
+    @extension.extensible
     async def monologue(self):
         while True:
             try:
                 # loop data dictionary to pass to extensions
                 self.loop_data = LoopData(user_message=self.last_user_message)
                 # call monologue_start extensions
-                await self.call_extensions("monologue_start", loop_data=self.loop_data)
+                await extension.call_extensions_async(
+                    "monologue_start", self, loop_data=self.loop_data
+                )
 
                 printer = PrintStyle(italic=True, font_color="#b3ffd9", padding=False)
 
@@ -399,8 +396,8 @@ class Agent:
                     self.loop_data.params_temporary = {}  # clear temporary params
 
                     # call message_loop_start extensions
-                    await self.call_extensions(
-                        "message_loop_start", loop_data=self.loop_data
+                    await extension.call_extensions_async(
+                        "message_loop_start", self, loop_data=self.loop_data
                     )
                     await self.handle_intervention()
 
@@ -421,8 +418,8 @@ class Agent:
                             continue
 
                         # call before_main_llm_call extensions
-                        await self.call_extensions(
-                            "before_main_llm_call", loop_data=self.loop_data
+                        await extension.call_extensions_async(
+                            "before_main_llm_call", self, loop_data=self.loop_data
                         )
                         await self.handle_intervention()
 
@@ -433,8 +430,9 @@ class Agent:
                                 printer.print("Reasoning: ")  # start of reasoning
                             # Pass chunk and full data to extensions for processing
                             stream_data = {"chunk": chunk, "full": full}
-                            await self.call_extensions(
+                            await extension.call_extensions_async(
                                 "reasoning_stream_chunk",
+                                self,
                                 loop_data=self.loop_data,
                                 stream_data=stream_data,
                             )
@@ -451,8 +449,9 @@ class Agent:
                                 printer.print("Response: ")  # start of response
                             # Pass chunk and full data to extensions for processing
                             stream_data = {"chunk": chunk, "full": full}
-                            await self.call_extensions(
+                            await extension.call_extensions_async(
                                 "response_stream_chunk",
+                                self,
                                 loop_data=self.loop_data,
                                 stream_data=stream_data,
                             )
@@ -471,13 +470,13 @@ class Agent:
                         await self.handle_intervention(agent_response)
 
                         # Notify extensions to finalize their stream filters
-                        await self.call_extensions(
-                            "reasoning_stream_end", loop_data=self.loop_data
+                        await extension.call_extensions_async(
+                            "reasoning_stream_end", self, loop_data=self.loop_data
                         )
                         await self.handle_intervention(agent_response)
 
-                        await self.call_extensions(
-                            "response_stream_end", loop_data=self.loop_data
+                        await extension.call_extensions_async(
+                            "response_stream_end", self, loop_data=self.loop_data
                         )
 
                         await self.handle_intervention(agent_response)
@@ -510,8 +509,8 @@ class Agent:
                     finally:
                         # call message_loop_end extensions
                         if self.context.task and self.context.task.is_alive(): # don't call extensions post mortem
-                            await self.call_extensions(
-                                "message_loop_end", loop_data=self.loop_data
+                            await extension.call_extensions_async(
+                                "message_loop_end", self, loop_data=self.loop_data
                             )
 
 
@@ -523,21 +522,27 @@ class Agent:
                 self.context.streaming_agent = None  # unset current streamer
                 # call monologue_end extensions
                 if self.context.task and self.context.task.is_alive(): # don't call extensions post mortem
-                    await self.call_extensions("monologue_end", loop_data=self.loop_data)  # type: ignore
+                    await extension.call_extensions_async(
+                        "monologue_end", self, loop_data=self.loop_data
+                    )  # type: ignore
 
-    @extensible
+    @extension.extensible
     async def prepare_prompt(self, loop_data: LoopData) -> list[BaseMessage]:
         self.context.log.set_progress("Building prompt")
 
         # call extensions before setting prompts
-        await self.call_extensions("message_loop_prompts_before", loop_data=loop_data)
+        await extension.call_extensions_async(
+            "message_loop_prompts_before", self, loop_data=loop_data
+        )
 
         # set system prompt and message history
         loop_data.system = await self.get_system_prompt(self.loop_data)
         loop_data.history_output = self.history.output()
 
         # and allow extensions to edit them
-        await self.call_extensions("message_loop_prompts_after", loop_data=loop_data)
+        await extension.call_extensions_async(
+            "message_loop_prompts_after", self, loop_data=loop_data
+        )
 
         # concatenate system prompt
         system_text = "\n\n".join(loop_data.system)
@@ -577,7 +582,7 @@ class Agent:
 
         return full_prompt
 
-    @extensible
+    @extension.extensible
     async def handle_exception(self, location: str, exception: Exception):
         if exception:
             raise exception # exception handling is done by extensions
@@ -617,15 +622,15 @@ class Agent:
 
         #     raise HandledException(exception)  # Re-raise the exception to kill the loop
 
-    @extensible
+    @extension.extensible
     async def get_system_prompt(self, loop_data: LoopData) -> list[str]:
         system_prompt: list[str] = []
-        await self.call_extensions(
-            "system_prompt", system_prompt=system_prompt, loop_data=loop_data
+        await extension.call_extensions_async(
+            "system_prompt", self, system_prompt=system_prompt, loop_data=loop_data
         )
         return system_prompt
 
-    @extensible
+    @extension.extensible
     def parse_prompt(self, _prompt_file: str, **kwargs):
         dirs = subagents.get_paths(self, "prompts")
 
@@ -634,7 +639,7 @@ class Agent:
         )
         return prompt
 
-    @extensible
+    @extension.extensible
     def read_prompt(self, file: str, **kwargs) -> str:
         dirs = subagents.get_paths(self, "prompts")
 
@@ -649,21 +654,21 @@ class Agent:
     def set_data(self, field: str, value):
         self.data[field] = value
 
-    @extensible
+    @extension.extensible
     def hist_add_message(
         self, ai: bool, content: history.MessageContent, tokens: int = 0
     ):
         self.last_message = datetime.now(timezone.utc)
         # Allow extensions to process content before adding to history
         content_data = {"content": content}
-        asyncio.run(
-            self.call_extensions("hist_add_before", content_data=content_data, ai=ai)
+        extension.call_extensions_sync(
+            "hist_add_before", self, content_data=content_data, ai=ai
         )
         return self.history.add_message(
             ai=ai, content=content_data["content"], tokens=tokens
         )
 
-    @extensible
+    @extension.extensible
     def hist_add_user_message(self, message: UserMessage, intervention: bool = False):
         self.history.new_topic()  # user message starts a new topic in history
 
@@ -692,25 +697,25 @@ class Agent:
         self.last_user_message = msg
         return msg
 
-    @extensible
+    @extension.extensible
     def hist_add_ai_response(self, message: str):
         self.loop_data.last_response = message
         content = self.parse_prompt("fw.ai_response.md", message=message)
         return self.hist_add_message(True, content=content)
 
-    @extensible
+    @extension.extensible
     def hist_add_warning(self, message: history.MessageContent):
         content = self.parse_prompt("fw.warning.md", message=message)
         return self.hist_add_message(False, content=content)
 
-    @extensible
+    @extension.extensible
     def hist_add_tool_result(self, tool_name: str, tool_result: str, **kwargs):
         data = {
             "tool_name": tool_name,
             "tool_result": tool_result,
             **kwargs,
         }
-        asyncio.run(self.call_extensions("hist_add_tool_result", data=data))
+        extension.call_extensions_sync("hist_add_tool_result", self, data=data)
         return self.hist_add_message(False, content=data)
 
     def concat_messages(
@@ -718,7 +723,7 @@ class Agent:
     ):  # TODO add param for message range, topic, history
         return self.history.output_text(human_label="user", ai_label="assistant")
 
-    @extensible
+    @extension.extensible
     def get_chat_model(self):
         return models.get_chat_model(
             self.config.chat_model.provider,
@@ -727,7 +732,7 @@ class Agent:
             **self.config.chat_model.build_kwargs(),
         )
 
-    @extensible
+    @extension.extensible
     def get_utility_model(self):
         return models.get_chat_model(
             self.config.utility_model.provider,
@@ -736,7 +741,7 @@ class Agent:
             **self.config.utility_model.build_kwargs(),
         )
 
-    @extensible
+    @extension.extensible
     def get_browser_model(self):
         return models.get_browser_model(
             self.config.browser_model.provider,
@@ -745,7 +750,7 @@ class Agent:
             **self.config.browser_model.build_kwargs(),
         )
 
-    @extensible
+    @extension.extensible
     def get_embedding_model(self):
         return models.get_embedding_model(
             self.config.embeddings_model.provider,
@@ -754,7 +759,7 @@ class Agent:
             **self.config.embeddings_model.build_kwargs(),
         )
 
-    @extensible
+    @extension.extensible
     async def call_utility_model(
         self,
         system: str,
@@ -772,7 +777,9 @@ class Agent:
             "callback": callback,
             "background": background,
         }
-        await self.call_extensions("util_model_call_before", call_data=call_data)
+        await extension.call_extensions_async(
+            "util_model_call_before", self, call_data=call_data
+        )
 
         # propagate stream to callback if set
         async def stream_callback(chunk: str, total: str):
@@ -788,9 +795,13 @@ class Agent:
             ),
         )
 
+        await extension.call_extensions_async(
+            "util_model_call_after", self, call_data=call_data, response=response
+        )
+
         return response
 
-    @extensible
+    @extension.extensible
     async def call_chat_model(
         self,
         messages: list[BaseMessage],
@@ -817,7 +828,7 @@ class Agent:
 
         return response, reasoning
 
-    @extensible
+    @extension.extensible
     async def rate_limiter_callback(
         self, message: str, key: str, total: int, limit: int
     ):
@@ -825,7 +836,7 @@ class Agent:
         self.context.log.set_progress(message, True)
         return False
 
-    @extensible
+    @extension.extensible
     async def handle_intervention(self, progress: str = ""):
         await self.wait_if_paused()
         if (
@@ -850,10 +861,13 @@ class Agent:
         while self.context.paused:
             await asyncio.sleep(0.1)
 
-    @extensible
+    @extension.extensible
     async def process_tools(self, msg: str):
         # search for tool usage requests in agent message
         tool_request = extract_tools.json_parse_dirty(msg)
+
+        # basic validation + extensions
+        await self.validate_tool_request(tool_request)
 
         if tool_request is not None:
             raw_tool_name = tool_request.get("tool_name", tool_request.get("tool",""))  # Get the raw tool name
@@ -906,8 +920,9 @@ class Agent:
                     await self.handle_intervention()
 
                     # Allow extensions to preprocess tool arguments
-                    await self.call_extensions(
+                    await extension.call_extensions_async(
                         "tool_execute_before",
+                        self,
                         tool_args=tool_args or {},
                         tool_name=tool_name,
                     )
@@ -916,8 +931,11 @@ class Agent:
                     await self.handle_intervention()
 
                     # Allow extensions to postprocess tool response
-                    await self.call_extensions(
-                        "tool_execute_after", response=response, tool_name=tool_name
+                    await extension.call_extensions_async(
+                        "tool_execute_after",
+                        self,
+                        response=response,
+                        tool_name=tool_name,
                     )
 
                     await tool.after_execution(response)
@@ -945,10 +963,22 @@ class Agent:
                 content=f"{self.agent_name}: Message misformat, no valid tool request found.",
             )
 
+    @extension.extensible
+    async def validate_tool_request(self, tool_request: Any):
+        if not isinstance(tool_request, dict):
+            raise ValueError("Tool request must be a dictionary")
+        if not tool_request.get("tool_name") or not isinstance(tool_request.get("tool_name"), str):
+            raise ValueError("Tool request must have a tool_name (type string) field")
+        if not tool_request.get("tool_args") or not isinstance(tool_request.get("tool_args"), dict):
+            raise ValueError("Tool request must have a tool_args (type dictionary) field")
+
+
+
     async def handle_reasoning_stream(self, stream: str):
         await self.handle_intervention()
-        await self.call_extensions(
+        await extension.call_extensions_async(
             "reasoning_stream",
+            self,
             loop_data=self.loop_data,
             text=stream,
         )
@@ -960,8 +990,9 @@ class Agent:
                 return  # no reason to try
             response = DirtyJson.parse_string(stream)
             if isinstance(response, dict):
-                await self.call_extensions(
+                await extension.call_extensions_async(
                     "response_stream",
+                    self,
                     loop_data=self.loop_data,
                     text=stream,
                     parsed=response,
@@ -970,7 +1001,7 @@ class Agent:
         except Exception as e:
             pass
 
-    @extensible
+    @extension.extensible
     def get_tool(
         self,
         name: str,
@@ -1004,9 +1035,4 @@ class Agent:
             message=message,
             loop_data=loop_data,
             **kwargs,
-        )
-
-    async def call_extensions(self, extension_point: str, **kwargs) -> Any:
-        return await call_extensions(
-            extension_point=extension_point, agent=self, **kwargs
         )

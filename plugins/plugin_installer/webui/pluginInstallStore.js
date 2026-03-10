@@ -1,6 +1,12 @@
 import { createStore } from "/js/AlpineStore.js";
 import * as api from "/js/api.js";
+import { openModal } from "/js/modals.js";
+import { marked } from "/vendor/marked/marked.esm.js";
+import { toastFrontendSuccess } from "/components/notifications/notification-store.js";
 import { showConfirmDialog } from "/js/confirmDialog.js";
+import { store as imageViewerStore } from "/components/modals/image-viewer/image-viewer-store.js";
+import { store as pluginListStore } from "/components/plugins/list/pluginListStore.js";
+import { store as pluginInitStore } from "/components/plugins/list/plugin-init-store.js";
 
 const PLUGIN_API = "plugins/plugin_installer/plugin_install";
 const PER_PAGE = 20;
@@ -8,13 +14,13 @@ const PER_PAGE = 20;
 const SECURITY_WARNING = {
   title: "Security Warning",
   message: `
-    <p><strong>Installing plugins from untrusted sources may pose security risks:</strong></p>
+    <p><strong>Plugins from third parties can be a great risk, keep in mind that:</strong></p>
     <ul style="margin: 0.75em 0; padding-left: 1.5em;">
-      <li>Malicious code execution</li>
-      <li>Exposure of sensitive data</li>
-      <li>System compromise</li>
+      <li>You can be hacked the moment you install it</li>
+      <li>We can not prevent it or help you</li>
+      <li>It is your responsibility</li>
     </ul>
-    <p style="margin-top: 0.75em;">Only install plugins from sources you trust.</p>
+    <p style="margin-top: 0.75em;">We can never fully guarantee that plugins are safe because there are many ways to obfuscate malicious code.</p>
   `,
   type: "warning",
   confirmText: "Install Anyway",
@@ -31,11 +37,12 @@ const model = {
   gitToken: "",
 
   // Index state
-  index: null,
+  index: { authors: {}, plugins: {} },
   installedPlugins: [],
   search: "",
   page: 1,
   sortBy: "stars",
+  browseFilter: "all",
   selectedPlugin: null,
 
   // Shared state
@@ -44,6 +51,15 @@ const model = {
   error: "",
   result: null,
 
+  // README state
+  readmeContent: null,
+  readmeLoading: false,
+
+  // Installed plugin detail (for manage buttons)
+  installedPluginInfo: null,
+
+  detailThumbnailUrl: null,
+
   // Tab state
   activeTab: "store",
 
@@ -51,6 +67,60 @@ const model = {
     this.activeTab = tab;
     this.error = "";
     this.result = null;
+  },
+
+  setBrowseFilter(filter) {
+    this.browseFilter = filter || "all";
+    this.page = 1;
+  },
+
+  /** Normalize GitHub URL and return raw.githubusercontent.com base (no trailing slash). */
+  _githubRawBase(githubUrl) {
+    if (!githubUrl || typeof githubUrl !== "string") return null;
+    let url = githubUrl.trim().replace(/\.git$/i, "");
+    if (!url.includes("github.com")) return null;
+    return url.replace("https://github.com/", "https://raw.githubusercontent.com/");
+  },
+
+  _pluginName(plugin) {
+    const githubUrl = (plugin?.github || "").trim().replace(/\.git$/i, "");
+    const match = githubUrl.match(/github\.com\/([^/]+)\/([^/]+)/i);
+    if (!match) return plugin?.key || "";
+
+    const parts = [match[1], match[2]]
+      .map((part) =>
+        String(part)
+          .replace(/[^0-9A-Za-z]+/g, "_")
+          .replace(/_+/g, "_")
+          .replace(/^_+|_+$/g, "")
+      )
+      .filter(Boolean);
+
+    return parts.join("__") || plugin?.key || "";
+  },
+
+  _pluginPrimaryTag(plugin) {
+    const tags = Array.isArray(plugin?.tags) ? plugin.tags.filter(Boolean) : [];
+    return tags[0] || "";
+  },
+
+  _formatBrowseTag(tag) {
+    if (!tag || typeof tag !== "string") return "";
+    return tag
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  },
+
+  _matchesBrowseFilter(plugin, filterKey) {
+    if (!filterKey || filterKey === "all") return true;
+    if (filterKey === "installed") return !!plugin?.installed;
+    if (filterKey === "popular") return (plugin?.stars || 0) > 0;
+    if (filterKey.startsWith("tag:")) {
+      return this._pluginPrimaryTag(plugin) === filterKey.slice(4);
+    }
+    return false;
   },
 
   // ── ZIP Install ──────────────────────────────
@@ -95,15 +165,14 @@ const model = {
       }
 
       this.result = data;
-      if (window.toastFrontendSuccess) {
-        window.toastFrontendSuccess(
-          `Plugin "${data.title || data.plugin_name}" installed`,
-          "Plugin Installer"
-        );
-      }
-      this._refreshPluginList();
+
+      toastFrontendSuccess(
+        `Plugin "${data.title || data.plugin_name}" installed`,
+        "Plugin Installer"
+      );
     } catch (e) {
-      this.error = `Installation error: ${e.message}`;
+      const message = e instanceof Error ? e.message : String(e);
+      this.error = `Installation error: ${message}`;
     } finally {
       this.loading = false;
       this.loadingMessage = "";
@@ -140,15 +209,14 @@ const model = {
       }
 
       this.result = data;
-      if (window.toastFrontendSuccess) {
-        window.toastFrontendSuccess(
-          `Plugin "${data.title || data.plugin_name}" installed`,
-          "Plugin Installer"
-        );
-      }
-      this._refreshPluginList();
+
+      toastFrontendSuccess(
+        `Plugin "${data.title || data.plugin_name}" installed`,
+        "Plugin Installer"
+      );
     } catch (e) {
-      this.error = `Clone error: ${e.message}`;
+      const message = e instanceof Error ? e.message : String(e);
+      this.error = `Clone error: ${message}`;
     } finally {
       this.loading = false;
       this.loadingMessage = "";
@@ -162,7 +230,7 @@ const model = {
       this.loading = true;
       this.loadingMessage = "Loading plugin index...";
       this.error = "";
-      this.index = null;
+      // this.index = null;
 
       const data = await api.callJsonApi(PLUGIN_API, {
         action: "fetch_index",
@@ -177,7 +245,8 @@ const model = {
       this.installedPlugins = data.installed_plugins || [];
       this.page = 1;
     } catch (e) {
-      this.error = `Failed to load plugin index: ${e.message}`;
+      const message = e instanceof Error ? e.message : String(e);
+      this.error = `Failed to load plugin index: ${message}`;
     } finally {
       this.loading = false;
       this.loadingMessage = "";
@@ -193,13 +262,52 @@ const model = {
     }));
   },
 
+  get browseFilters() {
+    const plugins = this.pluginsList;
+    const filters = [{ key: "all", label: "All", count: plugins.length }];
+
+    if (!plugins.length) return filters;
+
+    const installedCount = plugins.filter((plugin) => plugin.installed).length;
+    if (installedCount) {
+      filters.push({ key: "installed", label: "Installed", count: installedCount });
+    }
+
+    const popularCount = plugins.filter((plugin) => (plugin.stars || 0) > 0).length;
+    if (popularCount) {
+      filters.push({ key: "popular", label: "Popular", count: popularCount });
+    }
+
+    const tagCounts = new Map();
+    for (const plugin of plugins) {
+      const tag = this._pluginPrimaryTag(plugin);
+      if (!tag) continue;
+      tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    }
+
+    for (const [tag, count] of Array.from(tagCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 4)) {
+      filters.push({
+        key: `tag:${tag}`,
+        label: this._formatBrowseTag(tag),
+        count,
+      });
+    }
+
+    return filters;
+  },
+
   get filteredPlugins() {
-    let list = this.pluginsList;
+    let list = this.pluginsList.filter((plugin) =>
+      this._matchesBrowseFilter(plugin, this.browseFilter)
+    );
     const q = (this.search || "").toLowerCase().trim();
     if (q) {
       list = list.filter(
         (p) =>
           (p.title || "").toLowerCase().includes(q) ||
+          (p.author || "").toLowerCase().includes(q) ||
           (p.description || "").toLowerCase().includes(q) ||
           (p.key || "").toLowerCase().includes(q) ||
           (p.tags || []).some((t) => t.toLowerCase().includes(q))
@@ -215,6 +323,16 @@ const model = {
     return list;
   },
 
+  get browseResultsSummary() {
+    const total = this.pluginsList.length;
+    const visible = this.filteredPlugins.length;
+    if (!total) return "No plugins available";
+    if (visible === total) {
+      return `${total} plugin${total === 1 ? "" : "s"} available`;
+    }
+    return `Showing ${visible} of ${total} plugins`;
+  },
+
   get totalPages() {
     return Math.max(1, Math.ceil(this.filteredPlugins.length / PER_PAGE));
   },
@@ -224,19 +342,64 @@ const model = {
     return this.filteredPlugins.slice(start, start + PER_PAGE);
   },
 
+  getBrowseSubtitle(plugin) {
+    const author = (plugin?.author || "").trim();
+    if (author) return author;
+    const tag = this._pluginPrimaryTag(plugin);
+    if (tag) return this._formatBrowseTag(tag);
+    return plugin?.key || "";
+  },
+
+  getBrowsePrimaryTag(plugin) {
+    return this._formatBrowseTag(this._pluginPrimaryTag(plugin));
+  },
+
   setPage(p) {
     this.page = Math.max(1, Math.min(p, this.totalPages));
   },
 
   openDetail(plugin) {
-    this.selectedPlugin = plugin;
+    this.selectedPlugin = { ...plugin, name: this._pluginName(plugin) };
     this.error = "";
     this.result = null;
     this.installedPluginInfo = null;
-    if (plugin.installed) {
-      this.fetchInstalledPluginInfo(plugin.key);
+    this.readmeContent = null;
+    this.detailThumbnailUrl = this.getThumbnailUrl(this.selectedPlugin);
+    if (this.selectedPlugin.installed) {
+      this.fetchInstalledPluginInfo(this.selectedPlugin.name);
     }
-    window.openModal?.("../plugins/plugin_installer/webui/install-detail.html");
+    this.fetchReadme(this.selectedPlugin);
+    openModal("/plugins/plugin_installer/webui/install-detail.html");
+  },
+
+  async fetchReadme(plugin) {
+    const rawBase = this._githubRawBase(plugin?.github);
+    if (!rawBase) return;
+
+    try {
+      this.readmeLoading = true;
+      this.readmeContent = null;
+      let lastError = null;
+
+      for (const branch of ["main", "master"]) {
+        try {
+          const response = await fetch(`${rawBase}/${branch}/README.md`);
+          if (!response.ok) continue;
+
+          const readme = await response.text();
+          this.readmeContent = marked.parse(readme, { breaks: true });
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (lastError) {
+        console.warn("Failed to fetch readme:", lastError);
+      }
+    } finally {
+      this.readmeLoading = false;
+    }
   },
 
   async installFromIndex(plugin) {
@@ -245,14 +408,22 @@ const model = {
       return;
     }
 
-    const confirmed = await showConfirmDialog(SECURITY_WARNING);
+    const confirmed = await showConfirmDialog({
+      ...SECURITY_WARNING,
+      extensionContext: {
+        kind: "marketplace_plugin_install_warning",
+        source: "plugin_installer",
+        pluginKey: plugin.key || "",
+        pluginTitle: plugin.title || plugin.key || "",
+        gitUrl: plugin.github,
+      },
+    });
     if (!confirmed) return;
 
     try {
       this.loading = true;
       this.loadingMessage = `Installing ${plugin.title || plugin.key}...`;
       this.error = "";
-      this.result = null;
 
       const data = await api.callJsonApi(PLUGIN_API, {
         action: "install_git",
@@ -264,21 +435,25 @@ const model = {
         return;
       }
 
-      this.result = data;
-      if (!this.installedPlugins.includes(plugin.key)) {
-        this.installedPlugins.push(plugin.key);
+      const installedKey = plugin.key || data.plugin_name;
+      if (installedKey && !this.installedPlugins.includes(installedKey)) {
+        this.installedPlugins = [...this.installedPlugins, installedKey];
       }
-      plugin.installed = true;
+      this.selectedPlugin = {
+        ...plugin,
+        ...(this.selectedPlugin || {}),
+        installed: true,
+      };
+      this.detailThumbnailUrl = this.getThumbnailUrl(this.selectedPlugin);
+      this.fetchInstalledPluginInfo(data.plugin_name);
 
-      if (window.toastFrontendSuccess) {
-        window.toastFrontendSuccess(
-          `Plugin "${data.title || data.plugin_name}" installed`,
-          "Plugin Installer"
-        );
-      }
-      this._refreshPluginList();
+      toastFrontendSuccess(
+        `Plugin "${data.title || data.plugin_name}" installed`,
+        "Plugin Installer"
+      );
     } catch (e) {
-      this.error = `Installation error: ${e.message}`;
+      const message = e instanceof Error ? e.message : String(e);
+      this.error = `Installation error: ${message}`;
     } finally {
       this.loading = false;
       this.loadingMessage = "";
@@ -287,66 +462,85 @@ const model = {
 
   // ── Installed Plugin Info ─────────────────────
 
-  installedPluginInfo: null,
-  installedPluginInfoLoading: false,
-
-  async fetchInstalledPluginInfo(pluginKey) {
+  async fetchInstalledPluginInfo(pluginName) {
     this.installedPluginInfo = null;
-    this.installedPluginInfoLoading = true;
     try {
       const response = await api.callJsonApi("plugins_list", {
         filter: { custom: true, builtin: true, search: "" },
       });
       const plugins = Array.isArray(response.plugins) ? response.plugins : [];
-      this.installedPluginInfo = plugins.find(
-        (p) => p.name === pluginKey
-      ) || null;
-    } catch (e) {
+      this.installedPluginInfo = plugins.find((p) => p.name === pluginName) || null;
+    } catch (_error) {
       this.installedPluginInfo = null;
-    } finally {
-      this.installedPluginInfoLoading = false;
     }
   },
 
+
   manageOpenPlugin() {
     const info = this.installedPluginInfo;
-    if (!info?.name || !info?.has_main_screen) return;
-    window.openModal?.(`/plugins/${info.name}/webui/main.html`);
+    if (!info || !info.name || !info.has_main_screen) return;
+    openModal(`/plugins/${info.name}/webui/main.html`);
   },
 
   async manageOpenConfig() {
-    const pls = Alpine.store("pluginListStore");
-    if (pls?.openPluginConfig && this.installedPluginInfo) {
-      await pls.openPluginConfig(this.installedPluginInfo);
+    if (this.installedPluginInfo) {
+      await pluginListStore.openPluginConfig(this.installedPluginInfo);
     }
   },
 
   async manageOpenDoc(doc) {
-    const pls = Alpine.store("pluginListStore");
-    if (pls?.openPluginDoc && this.installedPluginInfo) {
-      await pls.openPluginDoc(this.installedPluginInfo, doc);
+    if (this.installedPluginInfo) {
+      await pluginListStore.openPluginDoc(this.installedPluginInfo, doc);
     }
   },
 
   manageOpenInfo() {
-    const pls = Alpine.store("pluginListStore");
-    if (pls?.openPluginInfo && this.installedPluginInfo) {
-      pls.openPluginInfo(this.installedPluginInfo);
+    if (this.installedPluginInfo) {
+      pluginListStore.openPluginInfo(this.installedPluginInfo);
+    }
+  },
+
+  manageOpenInit() {
+    if (this.installedPluginInfo) {
+      pluginInitStore.open(this.installedPluginInfo);
     }
   },
 
   async manageDeletePlugin() {
-    const pls = Alpine.store("pluginListStore");
-    if (pls?.deletePlugin && this.installedPluginInfo) {
-      await pls.deletePlugin(this.installedPluginInfo);
-      // Mark as no longer installed in the index view
-      if (this.selectedPlugin) {
-        this.selectedPlugin.installed = false;
-        const idx = this.installedPlugins.indexOf(this.selectedPlugin.key);
-        if (idx !== -1) this.installedPlugins.splice(idx, 1);
+    if (this.installedPluginInfo) {
+      await pluginListStore.deletePlugin(this.installedPluginInfo);
+      const currentPlugin = this.selectedPlugin;
+      if (currentPlugin) {
+        this.selectedPlugin = { ...currentPlugin, installed: false };
+        this.installedPlugins = this.installedPlugins.filter(
+          (key) => key !== currentPlugin.key
+        );
       }
       this.installedPluginInfo = null;
     }
+  },
+
+  getIndexUrl(pluginKey) {
+    if (!pluginKey) return "";
+    return `https://github.com/agent0ai/a0-plugins/tree/main/plugins/${pluginKey}`;
+  },
+
+  getThumbnailUrl(plugin) {
+    if (!plugin) return null;
+    if (plugin.thumbnail && typeof plugin.thumbnail === "string") return plugin.thumbnail;
+    const rawBase = this._githubRawBase(plugin?.github);
+    return rawBase ? `${rawBase}/main/thumbnail.png` : null;
+  },
+
+  getDetailThumbnailUrl() {
+    return this.detailThumbnailUrl;
+  },
+
+  openScreenshot(url) {
+    if (!url) return;
+    imageViewerStore.open(url, {
+      name: this.selectedPlugin?.title || this.selectedPlugin?.key || "Plugin screenshot",
+    });
   },
 
   // ── Shared ───────────────────────────────────
@@ -369,13 +563,18 @@ const model = {
     this.search = "";
     this.page = 1;
     this.sortBy = "stars";
+    this.browseFilter = "all";
     this.error = "";
     this.result = null;
     this.selectedPlugin = null;
   },
 
-  _refreshPluginList() {
-    window.dispatchEvent(new CustomEvent("plugin-modal-closed"));
+  /** Refresh related list views after installer/detail actions. */
+  refreshPluginList() {
+    if (pluginListStore.activeTab === "marketplace") {
+      void this.fetchIndex();
+    }
+    pluginListStore.refresh();
   },
 
   truncate(text, max) {
