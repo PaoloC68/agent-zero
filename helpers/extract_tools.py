@@ -47,15 +47,40 @@ def extract_json_object_string(content):
     if start == -1:
         return ""
 
-    # Find the first '{'
-    end = content.rfind("}")
-    if end == -1:
-        # If there's no closing '}', return from start to the end
-        return content[start:]
-    else:
-        # If there's a closing '}', return the substring from start to end
-        return content[start : end + 1]
+    depth = 0
+    in_string = False
+    escape_next = False
 
+    i = start
+    while i < len(content):
+        char = content[i]
+
+        if escape_next:
+            escape_next = False
+            i += 1
+            continue
+
+        if char == '\\' and in_string:
+            escape_next = True
+            i += 1
+            continue
+
+        if char == '"':
+            in_string = not in_string
+            i += 1
+            continue
+
+        if not in_string:
+            if char == '{':
+                depth += 1
+            elif char == '}':
+                depth -= 1
+                if depth == 0:
+                    return content[start:i+1]
+
+        i += 1
+
+    return content[start:]
 
 def extract_json_string(content):
     # Regular expression pattern to match a JSON object

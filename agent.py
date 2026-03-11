@@ -335,6 +335,7 @@ class LoopData:
         self.params_temporary: dict = {}
         self.params_persistent: dict = {}
         self.current_tool = None
+        self.consecutive_misformat = 0
 
         # override values with kwargs
         for key, value in kwargs.items():
@@ -878,6 +879,7 @@ class Agent:
             await self.validate_tool_request(tool_request)
 
         if tool_request is not None:
+            self.loop_data.consecutive_misformat = 0
             raw_tool_name = tool_request.get("tool_name", tool_request.get("tool",""))  # Get the raw tool name
             tool_args = tool_request.get("tool_args", tool_request.get("args", {}))
 
@@ -963,13 +965,21 @@ class Agent:
                     type="warning", content=f"{self.agent_name}: {error_detail}", id=wmsg.id
                 )
         else:
+            self.loop_data.consecutive_misformat += 1
+
+            if self.loop_data.consecutive_misformat >= 5:
+                error_msg = f"Too many consecutive misformatted responses ({self.loop_data.consecutive_misformat}). Breaking loop."
+                self.hist_add_warning(error_msg)
+                PrintStyle(font_color="red", padding=True).print(error_msg)
+                self.context.log.log(type="error", content=error_msg)
+                raise HandledException(error_msg)
+
             warning_msg_misformat = self.read_prompt("fw.msg_misformat.md")
             wmsg = self.hist_add_warning(warning_msg_misformat)
             PrintStyle(font_color="red", padding=True).print(warning_msg_misformat)
             self.context.log.log(
                 type="warning",
-                content=f"{self.agent_name}: Message misformat, no valid tool request found.",
-                id=wmsg.id,
+                content=f"{self.agent_name}: Message misformat ({self.loop_data.consecutive_misformat}/5)",
             )
 
     @extension.extensible
