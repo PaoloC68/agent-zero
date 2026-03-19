@@ -15,6 +15,8 @@ from typing import (
     TypedDict,
 )
 
+from regex import W
+
 from helpers import (
     files,
     git,
@@ -23,11 +25,13 @@ from helpers import (
     yaml as yaml_helper,
     cache,
     extension,
+    watchdog,
     extract_tools,
 )
 from pydantic import BaseModel, Field
 
 from helpers.defer import DeferredTask
+from helpers.watchdog import WatchItem
 
 if TYPE_CHECKING:
     from agent import Agent
@@ -57,6 +61,10 @@ TOGGLE_FILE_PATTERN = ".toggle-[01]"
 
 HOOKS_SCRIPT = "hooks.py"
 HOOKS_CACHE_AREA = "plugin_hooks(plugins)"
+PLUGINS_LIST_CACHE_AREA = "plugins_list(plugins)"
+ENABLED_PLUGINS_LIST_CACHE_AREA = "enabled_plugins(plugins)"
+ENABLED_PLUGINS_PATHS_CACHE_AREA = "enabled_plugins_paths(plugins)"
+
 
 _last_frontend_reload_notification_at = 0.0
 
@@ -87,10 +95,11 @@ class PluginListItem(BaseModel):
     has_config_screen: bool = False
     has_readme: bool = False
     has_license: bool = False
-    has_init_script: bool = False
+    has_execute_script: bool = False
     toggle_state: ToggleState = "disabled"
     current_commit: str = ""
     current_commit_timestamp: str = ""
+    thumbnail_url: str = ""
 
 
 class PluginUpdateInfo(BaseModel):
@@ -106,6 +115,63 @@ class PluginUpdateInfo(BaseModel):
     error: str = ""
 
 
+def register_watchdogs():
+
+    def on_plugin_change(events: list[WatchItem]):
+        plugin_names: list[str] = []
+        for path, _event in events:
+            path = path.replace("\\", "/")
+            if "/plugins/" not in path:
+                continue
+            plugin_name = path.split("/plugins/", 1)[1].split("/", 1)[0]
+            if plugin_name and plugin_name not in plugin_names:
+                plugin_names.append(plugin_name)
+        print_style.PrintStyle.debug("Plugins watchdog triggered", plugin_names)
+        after_plugin_change(plugin_names or None)
+
+    relevant_patterns = ["**/extensions/**/*", TOGGLE_FILE_PATTERN, HOOKS_SCRIPT]
+
+    # combine relevant patterns with base path
+    def expand_patterns(base_path:str):
+        result = []
+        for pattern in relevant_patterns:
+            result.append(base_path+pattern)
+        return result
+
+    # add watchdogs for plugin roots
+    watchdog.add_watchdog(
+        id="plugins_roots",
+        roots=get_plugin_roots(),
+        patterns = [*expand_patterns("*/")],
+        handler=on_plugin_change,
+    )
+
+    from helpers import projects
+    from helpers import subagents
+
+    # add watchdogs for plugin overrides in projects/plugins and projects/agents/plugins
+    watchdog.add_watchdog(
+        id="plugins_projects",
+        roots=[files.get_abs_path(projects.PROJECTS_PARENT_DIR)],
+        patterns=[
+            *expand_patterns(f"*/{projects.PROJECT_META_DIR}/plugins/"),
+            *expand_patterns(f"*/{projects.PROJECT_META_DIR}/agents/*/plugins/"),
+        ],
+        handler=on_plugin_change,
+    )
+
+    # add watchdogs for plugin overrides in /agents/plugins and /usr/agents/plugins
+    watchdog.add_watchdog(
+        id="plugins_agents",
+        roots=[
+            files.get_abs_path(subagents.DEFAULT_AGENTS_DIR),
+            files.get_abs_path(subagents.USER_AGENTS_DIR),
+        ],
+        patterns=[*expand_patterns(f"*/plugins/*/")],
+        handler=on_plugin_change,
+    )
+
+
 @extension.extensible
 def after_plugin_change(plugin_names: list[str] | None = None):
     clear_plugin_cache()
@@ -114,6 +180,8 @@ def after_plugin_change(plugin_names: list[str] | None = None):
 
 def clear_plugin_cache():
     cache.clear("*(plugins)*")
+    cache.clear("*(extensions)*")
+    cache.clear("*(api)*")
 
 
 def get_plugin_roots(plugin_name: str = "") -> List[str]:
@@ -125,6 +193,9 @@ def get_plugin_roots(plugin_name: str = "") -> List[str]:
 
 
 def get_plugins_list():
+    if cached := cache.get(PLUGINS_LIST_CACHE_AREA, ""):
+        return cached
+
     result: list[str] = []
     seen_names: set[str] = set()
     for root in get_plugin_roots():
@@ -137,6 +208,8 @@ def get_plugins_list():
                 seen_names.add(dir.name)
                 result.append(dir.name)
     result.sort(key=lambda p: Path(p).name)
+
+    cache.add(PLUGINS_LIST_CACHE_AREA, "", result)
     return result
 
 
@@ -162,8 +235,15 @@ def get_enhanced_plugins_list(
                 has_config_screen = files.exists(str(d / "webui" / "config.html"))
                 has_readme = files.exists(str(d / "README.md"))
                 has_license = files.exists(str(d / "LICENSE"))
-                has_init_script = files.exists(str(d / "initialize.py"))
+                has_execute_script = files.exists(str(d / "execute.py"))
                 toggle_state = get_toggle_state(d.name)
+                thumbnail_url = ""
+                _thumb_exts = ("png", "jpg", "jpeg", "gif", "webp")
+                for _ext in _thumb_exts:
+                    _thumb = d / "webui" / f"thumbnail.{_ext}"
+                    if _thumb.is_file():
+                        thumbnail_url = f"/plugins/{d.name}/webui/thumbnail.{_ext}"
+                        break
                 current_commit = ""
                 current_commit_timestamp = ""
                 if is_custom:
@@ -187,10 +267,11 @@ def get_enhanced_plugins_list(
                         has_config_screen=has_config_screen,
                         has_readme=has_readme,
                         has_license=has_license,
-                        has_init_script=has_init_script,
+                        has_execute_script=has_execute_script,
                         toggle_state=toggle_state,
                         current_commit=current_commit,
                         current_commit_timestamp=current_commit_timestamp,
+                        thumbnail_url=thumbnail_url,
                     )
                 )
             except Exception as e:
@@ -204,8 +285,12 @@ def get_enhanced_plugins_list(
     return results
 
 
-def get_custom_plugins_updates(plugin_names: list[str] | None = None) -> List[PluginUpdateInfo]:
-    plugins = get_enhanced_plugins_list(custom=True, builtin=False, plugin_names=plugin_names)
+def get_custom_plugins_updates(
+    plugin_names: list[str] | None = None,
+) -> List[PluginUpdateInfo]:
+    plugins = get_enhanced_plugins_list(
+        custom=True, builtin=False, plugin_names=plugin_names
+    )
     results: list[PluginUpdateInfo] = []
 
     for plugin in plugins:
@@ -265,6 +350,7 @@ def uninstall_plugin(plugin_name):
     # then delete
     delete_plugin(plugin_name)
 
+
 @extension.extensible
 def delete_plugin(plugin_name: str):
     plugin_dir = find_plugin_dir(plugin_name)
@@ -291,6 +377,11 @@ def get_plugin_paths(*subpaths: str) -> List[str]:
 
 
 def get_enabled_plugin_paths(agent: Agent | None, *subpaths: str) -> List[str]:
+    if cached := cache.get(
+        ENABLED_PLUGINS_PATHS_CACHE_AREA, cache.determine_cache_key(agent, *subpaths)
+    ):
+        return cached
+
     enabled = get_enabled_plugins(agent)
     paths: list[str] = []
 
@@ -307,10 +398,21 @@ def get_enabled_plugin_paths(agent: Agent | None, *subpaths: str) -> List[str]:
         path_pattern = files.get_abs_path(base_dir, *subpaths)
         paths.extend(files.find_existing_paths_by_pattern(path_pattern))
 
+    cache.add(
+        ENABLED_PLUGINS_PATHS_CACHE_AREA,
+        cache.determine_cache_key(agent, *subpaths),
+        paths,
+    )
+
     return paths
 
 
 def get_enabled_plugins(agent: Agent | None):
+    if cached := cache.get(
+        ENABLED_PLUGINS_LIST_CACHE_AREA, cache.determine_cache_key(agent)
+    ):
+        return cached
+
     plugins = get_plugins_list()
     active = []
 
@@ -343,6 +445,8 @@ def get_enabled_plugins(agent: Agent | None):
 
         if enabled:
             active.append(plugin)
+
+    cache.add(ENABLED_PLUGINS_LIST_CACHE_AREA, cache.determine_cache_key(agent), active)
 
     return active
 
@@ -465,18 +569,16 @@ def get_plugin_config(
         )(files.read_file(file_path))
 
     # call plugin hook to modify the standard result if needed
-    new_result = call_plugin_hook(
+    result = call_plugin_hook(
         plugin_name,
-        "save_plugin_config",
-        result=result,
+        "get_plugin_config",
+        default=result,
         agent=agent,
         project_name=project_name,
         agent_profile=agent_profile,
     )
 
-    if new_result is not None:
-        return new_result
-    return result 
+    return result
 
 
 def get_default_plugin_config(plugin_name: str):
@@ -486,9 +588,7 @@ def get_default_plugin_config(plugin_name: str):
 
     # call plugin hook to get the result
     result = call_plugin_hook(
-        plugin_name,
-        "save_plugin_config",
-        file_path = file_path
+        plugin_name, "get_default_plugin_config", file_path=file_path
     )
 
     # or do standard load
@@ -512,7 +612,7 @@ def save_plugin_config(
     new_settings = call_plugin_hook(
         plugin_name,
         "save_plugin_config",
-        result=None,
+        default=settings,
         project_name=project_name,
         agent_profile=agent_profile,
         settings=settings,
@@ -522,8 +622,6 @@ def save_plugin_config(
     if new_settings is not None and file_path:
         files.write_file(file_path, json.dumps(new_settings))
         after_plugin_change([plugin_name])
-
-
 
 
 def find_plugin_asset(
@@ -712,12 +810,17 @@ def send_frontend_reload_notification(plugin_names: list[str] | None = None):
     DeferredTask().start_task(_send_later)
 
 
-def call_plugin_hook(plugin_name: str, hook_name: str, *args, **kwargs):
+def call_plugin_hook(
+    plugin_name: str, hook_name: str, default: Any = None, *args, **kwargs
+):
     hooks = None
 
     # use cached hooks if enabled
     if not cache.has(HOOKS_CACHE_AREA, plugin_name):
-        hooks_script = files.get_abs_path(find_plugin_dir(plugin_name), HOOKS_SCRIPT)
+        plugin_dir = find_plugin_dir(plugin_name)
+        if not plugin_dir:
+            return default  # plugin directory not found, skip hooks
+        hooks_script = files.get_abs_path(plugin_dir, HOOKS_SCRIPT)
         hooks = (
             extract_tools.import_module(hooks_script)
             if files.exists(hooks_script)
@@ -728,13 +831,13 @@ def call_plugin_hook(plugin_name: str, hook_name: str, *args, **kwargs):
         hooks = cache.get(HOOKS_CACHE_AREA, plugin_name)
 
     if not hooks:
-        return
+        return default
 
     hook = getattr(hooks, hook_name, None)
     if not hook:
-        return
+        return default
 
     if asyncio.iscoroutinefunction(hook):
-        return asyncio.run(hook(*args, **kwargs))
+        return asyncio.run(hook(*args, **kwargs, default=default))
 
-    return hook(*args, **kwargs)
+    return hook(*args, **kwargs, default=default)

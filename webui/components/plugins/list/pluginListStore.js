@@ -2,8 +2,9 @@ import { createStore } from "/js/AlpineStore.js";
 import * as api from "/js/api.js";
 import { store as pluginSettingsStore } from "/components/plugins/plugin-settings-store.js";
 import { store as pluginToggleStore } from "/components/plugins/toggle/plugin-toggle-store.js";
-import { store as pluginInitStore } from "/components/plugins/list/plugin-init-store.js";
+import { store as pluginExecuteStore } from "/components/plugins/list/plugin-execute-store.js";
 import { store as markdownModalStore } from "/components/modals/markdown/markdown-store.js";
+import { callJsExtensions } from "/js/extensions.js";
 import {
   store as notificationStore,
   defaultPriority,
@@ -30,6 +31,11 @@ const model = {
     try {
       const response = await api.callJsonApi("plugins_list", { filter });
       this.plugins = Array.isArray(response.plugins) ? response.plugins : [];
+      void callJsExtensions("plugins_list_after_load", {
+        filter: filter ? { ...filter } : null,
+        plugins: this.plugins,
+        store: this,
+      });
     } catch (e) {
       this.plugins = [];
       showErrorNotification(e, "Failed to load plugins list");
@@ -39,8 +45,8 @@ const model = {
   },
 
   async setTab(tab) {
-    if (tab === "marketplace") {
-      this.activeTab = "marketplace";
+    if (tab === "pluginHub") {
+      this.activeTab = "pluginHub";
       this.loading = false;
       return;
     }
@@ -54,7 +60,7 @@ const model = {
   },
 
   async refresh() {
-    if (this.activeTab === "marketplace") {
+    if (this.activeTab === "pluginHub") {
       return;
     }
     await this.setTab(this.activeTab);
@@ -65,29 +71,18 @@ const model = {
     window.openModal?.(`/plugins/${plugin.name}/webui/main.html`);
   },
 
-  openPluginInit(plugin) {
-    if (!plugin?.name || !plugin?.has_init_script) return;
-    pluginInitStore.open(plugin);
+  openPluginExecute(plugin) {
+    if (!plugin?.name || !plugin?.has_execute_script) return;
+    pluginExecuteStore.open(plugin);
   },
 
   async openPluginConfig(plugin) {
     if (!plugin?.name || !plugin?.has_config_screen) return;
     try {
-      // Initialize toggle store for activation state UI in settings modal
-      if (pluginToggleStore?.open) await pluginToggleStore.open(plugin);
-
-      if (!pluginSettingsStore?.open) {
+      if (!pluginSettingsStore?.openConfig) {
         throw new Error("Plugin settings store is unavailable.");
       }
-      await pluginSettingsStore.open(plugin.name, {
-        perProjectConfig: !!plugin.per_project_config,
-        perAgentConfig: !!plugin.per_agent_config,
-      });
-      // Set saveMode after open() (open resets it to 'plugin')
-      if (plugin.settings_sections?.includes('core')) {
-        pluginSettingsStore.saveMode = 'core';
-      }
-      window.openModal?.("components/plugins/plugin-settings.html");
+      await pluginSettingsStore.openConfig(plugin.name);
     } catch (e) {
       showErrorNotification(e, "Failed to open plugin config");
     }

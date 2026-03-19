@@ -5,6 +5,9 @@ from helpers import cache, subagents
 from typing import TYPE_CHECKING
 from functools import wraps
 import inspect
+import os
+
+from helpers.print_style import PrintStyle
 
 if TYPE_CHECKING:
     from agent import Agent
@@ -13,8 +16,10 @@ if TYPE_CHECKING:
 DEFAULT_EXTENSIONS_FOLDER = "python/extensions"
 USER_EXTENSIONS_FOLDER = "usr/extensions"
 
-_CACHE_AREA = "extension_folder_classes(extensions)(plugins)"
-cache.toggle_area(_CACHE_AREA, False)  # cache off for now
+_EXTENSIONS_CACHE_AREA = "extension_folder_classes(extensions)"
+_CLASSES_CACHE_AREA = "extension_classes(extensions)"
+# cache.toggle_area(_EXTENSIONS_CACHE_AREA, False)
+# cache.toggle_area(_CLASSES_CACHE_AREA, False)
 
 
 class _Unset:
@@ -22,6 +27,24 @@ class _Unset:
 
 
 _UNSET = _Unset()
+_EXTENSIONS_LOG_COUNTS: dict[str, int] = {}
+
+# debug - extensions call counter
+def _log_extension_call(name: str):
+    try:
+        every = int(os.getenv("EXTENSIONS_LOG", "0"))
+    except ValueError:
+        return
+
+    if every <= 0:
+        return
+
+    _EXTENSIONS_LOG_COUNTS[name] = _EXTENSIONS_LOG_COUNTS.get(name, 0) + 1
+    _EXTENSIONS_LOG_COUNTS["_total"] = _EXTENSIONS_LOG_COUNTS.get("_total", 0) + 1
+
+    if _EXTENSIONS_LOG_COUNTS["_total"] % every == 0:
+        for key, count in _EXTENSIONS_LOG_COUNTS.items():
+            print(f"{str(count):<6} {key}")
 
 
 # decorator to enable implicit extension points in existing functions
@@ -80,6 +103,7 @@ def extensible(func):
 
         start_point = f"{module_name}_{qual_name}_start"
         end_point = f"{module_name}_{qual_name}_end"
+
         agent = _get_agent(args, kwargs)
 
         data = {
@@ -177,6 +201,8 @@ class Extension:
 async def call_extensions_async(
     extension_point: str, agent: "Agent|None" = None, **kwargs
 ):
+    _log_extension_call(extension_point)
+
     # fetch classes for this extension point and agent
     classes = _get_extension_classes(extension_point, agent=agent, **kwargs)
 
@@ -188,6 +214,8 @@ async def call_extensions_async(
 
 
 def call_extensions_sync(extension_point: str, agent: "Agent|None" = None, **kwargs):
+    _log_extension_call(extension_point)
+
     # fetch classes for this extension point and agent
     classes = _get_extension_classes(extension_point, agent=agent, **kwargs)
 
@@ -230,6 +258,11 @@ def get_webui_extensions(
 def _get_extension_classes(
     extension_point: str, agent: "Agent|None" = None, **kwargs
 ) -> list[Type[Extension]]:
+    cache_key = cache.determine_cache_key(agent, extension_point)
+    cached = cache.get(_CLASSES_CACHE_AREA, cache_key)
+    if cached is not None:
+        return cached
+
     # search for extension folders in all agent's paths
     paths = subagents.get_paths(agent, "extensions/python", extension_point)
 
@@ -244,6 +277,7 @@ def _get_extension_classes(
     classes = sorted(
         unique.values(), key=lambda cls: _get_file_from_module(cls.__module__)
     )
+    cache.add(_CLASSES_CACHE_AREA, cache_key, classes)
     return classes
 
 
@@ -253,7 +287,7 @@ def _get_file_from_module(module_name: str) -> str:
 
 def _get_extensions(folder: str):
     folder = files.get_abs_path(folder)
-    cached = cache.get(_CACHE_AREA, folder)
+    cached = cache.get(_EXTENSIONS_CACHE_AREA, folder)
     if cached is not None:
         return cached
 
@@ -261,5 +295,23 @@ def _get_extensions(folder: str):
         return []
 
     classes = extract_tools.load_classes_from_folder(folder, "*", Extension)
-    cache.add(_CACHE_AREA, folder, classes)
+    cache.add(_EXTENSIONS_CACHE_AREA, folder, classes)
     return classes
+
+def register_extensions_watchdogs():
+    from helpers import watchdog
+
+    def extensions_changed(items: list[watchdog.WatchItem]):
+        cache.clear(_EXTENSIONS_CACHE_AREA)
+        cache.clear(_CLASSES_CACHE_AREA)
+        PrintStyle.debug("Extensions watchdog triggered:", items)
+
+    watchdog.add_watchdog(
+        id="extensions",
+        roots=[
+            files.get_abs_path(files.EXTENSIONS_DIR),
+            files.get_abs_path(files.USER_DIR, files.EXTENSIONS_DIR)
+            ],
+        handler=extensions_changed
+    )
+    # TODO - watch extensions under projects/agents

@@ -70,7 +70,7 @@
       <div class="dropdown-header">Chat Actions</div>
       
       <button class="dropdown-item" @click="$store.chats.newChat(); dropdownOpen = false">
-        <span class="material-symbols-outlined">edit_square</span>
+        <span class="material-symbols-outlined">chat_add_on</span>
         <span>New Chat</span>
       </button>
       
@@ -184,6 +184,7 @@
   .quick-actions-dropdown {
     position: fixed;
     z-index: 9999;
+    margin-top: 0;
   }
 
   /* Unified scrollbar styling for dropdown */
@@ -209,7 +210,12 @@
   }
 
   /* Dropdown item icon sizing */
-  .dropdown-item .material-symbols-outlined {
+  .quick-actions-dropdown .dropdown-item,
+  .quick-actions-dropdown .dropdown-item .material-symbols-outlined {
+    opacity: 1;
+  }
+
+  .quick-actions-dropdown .dropdown-item .material-symbols-outlined {
     font-size: 18px;
   }
 
