@@ -3,7 +3,7 @@ credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
 
 ingress:
   - hostname: helpa0.com
-    service: http://localhost:80
+    service: http://localhost:8080
     originRequest:
       connectTimeout: 30s
       tcpKeepAlive: 30s
