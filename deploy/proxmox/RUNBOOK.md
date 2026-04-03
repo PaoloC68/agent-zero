@@ -19,10 +19,10 @@ pveam download local ubuntu-24.04-standard_24.04-2_amd64.tar.zst
 
 ### 1.2 Create the LXC container
 
-Replace `<CTID>` with a free container ID (e.g. `200`).
+Container ID: **500**.
 
 ```bash
-pct create <CTID> local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst \
+pct create 500 local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst \
   --arch amd64 \
   --cores 8 \
   --memory 16384 \
@@ -39,7 +39,7 @@ pct create <CTID> local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst \
 ### 1.3 Add Docker-specific LXC settings
 
 ```bash
-cat >> /etc/pve/lxc/<CTID>.conf << 'EOF'
+cat >> /etc/pve/lxc/500.conf << 'EOF'
 lxc.apparmor.profile: unconfined
 lxc.cap.drop:
 lxc.mount.auto: proc:rw sys:rw
@@ -49,8 +49,8 @@ EOF
 ### 1.4 Start the container
 
 ```bash
-pct start <CTID>
-pct enter <CTID>
+pct start 500
+pct enter 500
 ```
 
 ### 1.5 Inside LXC: system update + Docker install
@@ -84,7 +84,7 @@ Run from your **local machine** (needs `kubectl` + `ssh` access to Proxmox).
 ### 2.1 Create directory structure on Proxmox LXC
 
 ```bash
-ssh root@192.168.1.5 "pct exec <CTID> -- bash -c '
+ssh root@192.168.1.5 "pct exec 500 -- bash -c '
   mkdir -p /opt/agent-zero/{data,conf,cloudflared}
   chmod 700 /opt/agent-zero
 '"
@@ -104,16 +104,16 @@ PROXMOX_HOST="root@192.168.1.5" ./deploy/proxmox/migrate-data.sh
 
 ```bash
 scp deploy/proxmox/model_providers.yaml root@192.168.1.5:/tmp/
-ssh root@192.168.1.5 "pct push <CTID> /tmp/model_providers.yaml /opt/agent-zero/conf/model_providers.yaml"
+ssh root@192.168.1.5 "pct push 500 /tmp/model_providers.yaml /opt/agent-zero/conf/model_providers.yaml"
 
 scp deploy/proxmox/docker-compose.yml root@192.168.1.5:/tmp/
-ssh root@192.168.1.5 "pct push <CTID> /tmp/docker-compose.yml /opt/agent-zero/docker-compose.yml"
+ssh root@192.168.1.5 "pct push 500 /tmp/docker-compose.yml /opt/agent-zero/docker-compose.yml"
 ```
 
 ### 2.4 Create .env file
 
 ```bash
-ssh root@192.168.1.5 "pct enter <CTID>"
+ssh root@192.168.1.5 "pct enter 500"
 # Inside LXC:
 cp /path/to/deploy/proxmox/.env.template /opt/agent-zero/.env
 nano /opt/agent-zero/.env   # fill in all values
@@ -124,7 +124,7 @@ chmod 600 /opt/agent-zero/.env
 
 ## Phase 3 — Agent Zero Container
 
-All commands inside the **LXC** (`pct enter <CTID>`).
+All commands inside the **LXC** (`pct enter 500`).
 
 ### 3.1 Authenticate with GHCR
 
