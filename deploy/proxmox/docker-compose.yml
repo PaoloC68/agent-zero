@@ -1,0 +1,19 @@
+services:
+  agent-zero:
+    image: ghcr.io/paoloc68/agent-zero-guard:latest
+    container_name: agent-zero
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - /opt/agent-zero/data:/a0
+      - /opt/agent-zero/conf/model_providers.yaml:/a0/conf/model_providers.yaml:ro
+    env_file:
+      - /opt/agent-zero/.env
+    environment:
+      - A0_BASE_URL=https://helpa0.com
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "3"
