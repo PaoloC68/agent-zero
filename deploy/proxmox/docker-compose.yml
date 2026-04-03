@@ -12,6 +12,8 @@ services:
       - /opt/agent-zero/.env
     environment:
       - A0_BASE_URL=https://helpa0.com
+    security_opt:
+      - apparmor=unconfined
     logging:
       driver: json-file
       options:
