@@ -6,6 +6,23 @@
 
 ---
 
+## Current Status (as of Apr 3 2026)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| LXC 500 | ✅ running | Ubuntu 24.04, 8 cores, 16GB RAM |
+| Docker | ✅ active | overlay2, apparmor=unconfined |
+| Agent Zero | ✅ active | :8080, 18,940 files migrated from k8s |
+| Nginx | ✅ active | HTTPS :443 with self-signed cert (replace with Let's Encrypt) |
+| Cloudflare Tunnel | ✅ active | 4 QUIC connections to fra03/06/08/21 |
+| External access | ✅ live | https://helpa0.com/login → 200 |
+| OPNsense split DNS | ⏳ manual | helpa0.com → 192.168.1.10 (do Phase 6) |
+| Let's Encrypt cert | ⏳ manual | Replace self-signed once CF API token available |
+
+**Proxmox host fix**: gateway was wrongly set to `192.168.1.1` — corrected to `192.168.1.254` (OPNsense LAN IP) in `/etc/network/interfaces`.
+
+---
+
 ## Phase 1 — Proxmox LXC Setup
 
 All commands run on the **Proxmox host** (`192.168.1.5`) unless noted.
@@ -272,7 +289,7 @@ curl -s https://helpa0.com/api/health
 
 ---
 
-## Phase 6 — OPNsense Split DNS
+## Phase 6 — OPNsense Split DNS  ← ONLY REMAINING MANUAL STEP
 
 ### 6.1 Add host override via GUI
 
