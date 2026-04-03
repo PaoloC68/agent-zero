@@ -600,7 +600,9 @@ class LiteLLMEmbeddingWrapper(Embeddings):
         # Apply rate limiting if configured
         apply_rate_limiter_sync(self.a0_model_conf, " ".join(texts))
 
-        resp = embedding(model=self.model_name, input=texts, **self.kwargs)
+        # LiteLLM >=1.80.11 bug: sends encoding_format=null, rejected by strict endpoints (DeepInfra, vLLM).
+        embed_kwargs = {"encoding_format": "float", **self.kwargs}
+        resp = embedding(model=self.model_name, input=texts, **embed_kwargs)
         return [
             item.get("embedding") if isinstance(item, dict) else item.embedding  # type: ignore
             for item in resp.data  # type: ignore
@@ -610,7 +612,8 @@ class LiteLLMEmbeddingWrapper(Embeddings):
         # Apply rate limiting if configured
         apply_rate_limiter_sync(self.a0_model_conf, text)
 
-        resp = embedding(model=self.model_name, input=[text], **self.kwargs)
+        embed_kwargs = {"encoding_format": "float", **self.kwargs}
+        resp = embedding(model=self.model_name, input=[text], **embed_kwargs)
         item = resp.data[0]  # type: ignore
         return item.get("embedding") if isinstance(item, dict) else item.embedding  # type: ignore
 
