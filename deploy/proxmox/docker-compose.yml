@@ -12,8 +12,11 @@ services:
       - /opt/agent-zero/.env
     environment:
       - A0_BASE_URL=https://helpa0.com
+<<<<<<< HEAD
     security_opt:
       - apparmor=unconfined
+=======
+>>>>>>> fb89a231 (deploy: add Proxmox LXC migration files for helpa0.com)
     logging:
       driver: json-file
       options:

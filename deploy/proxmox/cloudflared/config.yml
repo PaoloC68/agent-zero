@@ -3,7 +3,11 @@ credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
 
 ingress:
   - hostname: helpa0.com
+<<<<<<< HEAD
     service: http://localhost:8080
+=======
+    service: http://localhost:80
+>>>>>>> fb89a231 (deploy: add Proxmox LXC migration files for helpa0.com)
     originRequest:
       connectTimeout: 30s
       tcpKeepAlive: 30s
