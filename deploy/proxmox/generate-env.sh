@@ -16,7 +16,7 @@ get() {
     --secret-id "$SECRET_ID" \
     --key "$1" \
     --format json 2>/dev/null \
-    | jq -r '.string_value // empty'
+    | jq -r '.data.string_value // empty'
 }
 
 echo "Fetching secrets from MysteryBox $SECRET_ID ..."
