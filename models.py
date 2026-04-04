@@ -829,6 +829,16 @@ def _merge_provider_defaults(
         if key and key not in ("None", "NA"):
             kwargs["api_key"] = key
 
+    # OAuth Bearer auth: convert x-api-key to Authorization: Bearer for OAuth token providers.
+    # OAuth tokens (sk-ant-oat01-...) must be sent as Authorization: Bearer, not x-api-key.
+    if kwargs.get("api_key", "").startswith("sk-ant-oat"):
+        token = kwargs.pop("api_key")
+        extra_headers = dict(kwargs.get("extra_headers") or {})
+        extra_headers["authorization"] = f"Bearer {token}"
+        extra_headers.setdefault("user-agent", "claude-cli/2.1.2 (external, cli)")
+        kwargs["extra_headers"] = extra_headers
+        kwargs["api_key"] = "NA"
+
     # Merge LiteLLM global kwargs (timeouts, stream_timeout, etc.)
     try:
         global_kwargs = settings.get_settings().get("litellm_global_kwargs", {})  # type: ignore[union-attr]
