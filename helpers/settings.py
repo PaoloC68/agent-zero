@@ -500,7 +500,7 @@ def _apply_settings(previous: Settings | None):
         for ctx in AgentContext.all():
             ctx.config = config  # reinitialize context config with new settings
             # apply config to agents
-            agent = ctx.agent0
+            agent = getattr(ctx, 'agent0', None)
             while agent:
                 agent.config = ctx.config
                 agent = agent.get_data(agent.DATA_NAME_SUBORDINATE)
