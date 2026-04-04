@@ -835,9 +835,10 @@ def _merge_provider_defaults(
         token = kwargs.pop("api_key")
         extra_headers = dict(kwargs.get("extra_headers") or {})
         extra_headers["authorization"] = f"Bearer {token}"
+        extra_headers["x-api-key"] = ""
         extra_headers.setdefault("user-agent", "claude-cli/2.1.2 (external, cli)")
         kwargs["extra_headers"] = extra_headers
-        kwargs["api_key"] = "NA"
+        kwargs["api_key"] = " "
 
     # Merge LiteLLM global kwargs (timeouts, stream_timeout, etc.)
     try:
