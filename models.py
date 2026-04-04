@@ -612,7 +612,9 @@ class LiteLLMEmbeddingWrapper(Embeddings):
 
         # LiteLLM >=1.80.11 bug: sends encoding_format=null, rejected by strict endpoints (DeepInfra, vLLM).
         embed_kwargs = {"encoding_format": "float", **self.kwargs}
-        ctx = self.a0_model_conf.ctx_length if self.a0_model_conf and self.a0_model_conf.ctx_length else 8000
+        # Subtract 500 tokens from ctx_length: cl100k_base and the model's own tokenizer
+        # (e.g. bge-m3 SentencePiece) can diverge by ~2-3%, causing 400 errors at the boundary.
+        ctx = max((self.a0_model_conf.ctx_length if self.a0_model_conf else 0) or 8192, 1000) - 500
         texts = [trim_to_tokens(t, ctx, "start", ellipsis="") for t in texts]
         resp = embedding(model=self.model_name, input=texts, **embed_kwargs)
         return [
@@ -625,7 +627,7 @@ class LiteLLMEmbeddingWrapper(Embeddings):
         apply_rate_limiter_sync(self.a0_model_conf, text)
 
         embed_kwargs = {"encoding_format": "float", **self.kwargs}
-        ctx = self.a0_model_conf.ctx_length if self.a0_model_conf and self.a0_model_conf.ctx_length else 8000
+        ctx = max((self.a0_model_conf.ctx_length if self.a0_model_conf else 0) or 8192, 1000) - 500
         text = trim_to_tokens(text, ctx, "start", ellipsis="")
         resp = embedding(model=self.model_name, input=[text], **embed_kwargs)
         item = resp.data[0]  # type: ignore
