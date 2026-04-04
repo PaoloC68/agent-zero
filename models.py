@@ -24,7 +24,7 @@ from helpers import settings, dirty_json
 from helpers.dotenv import load_dotenv
 from helpers.providers import ModelType as ProviderModelType, get_provider_config
 from helpers.rate_limiter import RateLimiter
-from helpers.tokens import approximate_tokens
+from helpers.tokens import approximate_tokens, trim_to_tokens
 from helpers import dirty_json
 from helpers.extension import extensible  # extensible: allows plugins to intercept get_api_key()
 
@@ -602,6 +602,8 @@ class LiteLLMEmbeddingWrapper(Embeddings):
 
         # LiteLLM >=1.80.11 bug: sends encoding_format=null, rejected by strict endpoints (DeepInfra, vLLM).
         embed_kwargs = {"encoding_format": "float", **self.kwargs}
+        ctx = self.a0_model_conf.ctx_length if self.a0_model_conf and self.a0_model_conf.ctx_length else 8000
+        texts = [trim_to_tokens(t, ctx, "start", ellipsis="") for t in texts]
         resp = embedding(model=self.model_name, input=texts, **embed_kwargs)
         return [
             item.get("embedding") if isinstance(item, dict) else item.embedding  # type: ignore
@@ -613,6 +615,8 @@ class LiteLLMEmbeddingWrapper(Embeddings):
         apply_rate_limiter_sync(self.a0_model_conf, text)
 
         embed_kwargs = {"encoding_format": "float", **self.kwargs}
+        ctx = self.a0_model_conf.ctx_length if self.a0_model_conf and self.a0_model_conf.ctx_length else 8000
+        text = trim_to_tokens(text, ctx, "start", ellipsis="")
         resp = embedding(model=self.model_name, input=[text], **embed_kwargs)
         item = resp.data[0]  # type: ignore
         return item.get("embedding") if isinstance(item, dict) else item.embedding  # type: ignore
