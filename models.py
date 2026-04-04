@@ -619,7 +619,7 @@ class LiteLLMEmbeddingWrapper(Embeddings):
                 resp = embedding(model=self.model_name, input=texts, **embed_kwargs)
                 break
             except Exception as e:
-                if "input_tokens" in str(e) and "context" in str(e) and any(len(t) > 10 for t in texts):
+                if getattr(e, "status_code", None) == 400 and any(len(t) > 10 for t in texts):
                     texts = [t[: max(len(t) // 2, 10)] for t in texts]
                 else:
                     raise
@@ -640,7 +640,7 @@ class LiteLLMEmbeddingWrapper(Embeddings):
                 resp = embedding(model=self.model_name, input=[text], **embed_kwargs)
                 break
             except Exception as e:
-                if "input_tokens" in str(e) and "context" in str(e) and len(text) > 10:
+                if getattr(e, "status_code", None) == 400 and len(text) > 10:
                     text = text[: max(len(text) // 2, 10)]
                 else:
                     raise
