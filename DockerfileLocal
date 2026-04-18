@@ -22,11 +22,12 @@ RUN bash -c "source /opt/venv-a0/bin/activate && \
 # --- Layer 5: Playwright (cached alongside pip layer) ---
 RUN bash /ins/install_playwright.sh $BRANCH
 
-# --- Layer 6: Cisco Guard plugin + Skill Scanner ---
+# --- Layer 6: Cisco Guard plugin + Skill Scanner + Hindsight client ---
 RUN bash -c "source /opt/venv-a0/bin/activate && \
     pip install git+https://github.com/PaoloC68/agent-zero-cisco-guard.git && \
     git clone https://github.com/cisco-ai-defense/skill-scanner /tmp/skill-scanner && \
     pip install /tmp/skill-scanner && \
+    pip install 'hindsight-client>=0.4.0' && \
     rm -rf /tmp/skill-scanner"
 
 # --- Layer 7: Full source (changes often, but COPY is fast + no installs after) ---
