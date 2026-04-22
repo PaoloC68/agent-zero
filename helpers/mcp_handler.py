@@ -980,7 +980,16 @@ class MCPClientBase(ABC):
             return response
 
         try:
-            return await self._execute_with_session(call_tool_op)
+            set = settings.get_settings()
+            effective_timeout = (
+                self.server.tool_timeout
+                or set["mcp_client_tool_timeout"]
+                or 120
+            )
+            return await self._execute_with_session(
+                call_tool_op,
+                read_timeout_seconds=effective_timeout,
+            )
         except Exception as e:
             # Error logged by _execute_with_session. Re-raise a specific error for the caller.
             PrintStyle(
