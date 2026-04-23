@@ -175,18 +175,20 @@ export function updateChatInput(text) {
     console.warn("`chatInput` element not found, cannot update.");
     return;
   }
-  console.log("updateChatInput called with:", text);
 
-  // Append text with proper spacing
-  const currentValue = chatInputEl.value;
+  const inputStore = window.Alpine?.store("chatInput");
+  const currentValue = inputStore ? inputStore.message : chatInputEl.value;
   const needsSpace = currentValue.length > 0 && !currentValue.endsWith(" ");
-  chatInputEl.value = currentValue + (needsSpace ? " " : "") + text + " ";
+  const newValue = currentValue + (needsSpace ? " " : "") + text + " ";
 
-  // Adjust height and trigger input event
+  if (inputStore) {
+    inputStore.message = newValue;
+  } else {
+    chatInputEl.value = newValue;
+    chatInputEl.dispatchEvent(new Event("input"));
+  }
+
   adjustTextareaHeight();
-  chatInputEl.dispatchEvent(new Event("input"));
-
-  console.log("Updated chat input value:", chatInputEl.value);
 }
 
 async function updateUserTime() {
